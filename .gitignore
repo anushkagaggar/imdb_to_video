@@ -1,0 +1,29 @@
+# Environment
+.env
+
+# Generated assets (large files)
+assets/audio/
+assets/clips/
+assets/images/
+assets/output/
+assets/*.json
+
+# Keep the folder structure
+!assets/.gitkeep
+!assets/audio/.gitkeep
+!assets/clips/.gitkeep
+!assets/images/.gitkeep
+!assets/output/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
