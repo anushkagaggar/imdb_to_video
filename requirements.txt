@@ -9,12 +9,10 @@ groq==0.9.0
 httpx==0.27.2
 
 # Video + Image
-moviepy==1.0.3
+imageio-ffmpeg==0.5.1
 Pillow==10.3.0
-yt-dlp==2024.5.27
+yt-dlp==2025.6.30
 
 # Audio
 gTTS==2.5.1
-pydub==0.25.1
-mutagen
-numpy
+mutagen==1.47.0
