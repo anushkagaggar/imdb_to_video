@@ -39,11 +39,11 @@ def text_to_speech(script: dict) -> str:
 
 def adjust_duration(audio_path: str, target_duration: int = VIDEO_DURATION) -> str:
     """
-    Adjust audio to match target duration using ffmpeg atempo filter.
-    - If audio is shorter: slow down slightly (NOT pad with silence)
-    - If audio is longer: speed up slightly
-    - If within 5s tolerance: leave as-is
-    Returns path to final audio file.
+    Adjust audio to fit target duration:
+    - If audio is LONGER than target: speed up slightly using atempo
+    - If audio is SHORTER: speed up very slightly (1.0x) — do NOT slow down
+      Instead, just use it as-is. The video will have some image-only time at the end.
+    - If within 10s tolerance: keep as-is
     """
     audio_info = MP3(audio_path)
     current_duration = audio_info.info.length
@@ -51,33 +51,24 @@ def adjust_duration(audio_path: str, target_duration: int = VIDEO_DURATION) -> s
 
     os.makedirs(os.path.dirname(NARRATION_FINAL), exist_ok=True)
 
-    if abs(current_duration - target_duration) < 5:
-        print("[Step 3] Duration within tolerance, copying as final")
-        # Just copy the file
+    # If audio is shorter than target — DO NOT slow it down
+    # Just copy as-is. Better to have natural-speed voice + some quiet at end
+    # than a sluggish slowed-down narration
+    if current_duration <= target_duration:
+        if target_duration - current_duration < 10:
+            print(f"[Step 3] Audio is {target_duration - current_duration:.1f}s short — keeping natural speed")
+        else:
+            print(f"[Step 3] Audio is {target_duration - current_duration:.1f}s short — keeping natural speed (script may need more words)")
         subprocess.run([FFMPEG, "-y", "-i", audio_path, "-c", "copy", NARRATION_FINAL],
                        capture_output=True, check=True)
+        print(f"[Step 3] Final narration -> {NARRATION_FINAL}")
         return NARRATION_FINAL
 
-    # Calculate tempo factor: >1 = speed up, <1 = slow down
+    # If audio is LONGER than target — speed it up
     speed = current_duration / target_duration
-
-    # atempo filter accepts 0.5 to 100.0 — chain for extreme values
-    if speed < 0.5:
-        print(f"[Step 3] Speed factor {speed:.2f} too extreme, padding instead")
-        # Pad with silence using ffmpeg
-        pad_duration = target_duration - current_duration
-        cmd = [
-            FFMPEG, "-y", "-i", audio_path,
-            "-af", f"apad=pad_dur={pad_duration}",
-            "-t", str(target_duration),
-            NARRATION_FINAL,
-        ]
-        subprocess.run(cmd, capture_output=True, check=True)
-        print(f"[Step 3] Padded to {target_duration}s -> {NARRATION_FINAL}")
-        return NARRATION_FINAL
+    print(f"[Step 3] Audio is {current_duration - target_duration:.1f}s too long — speeding up {speed:.2f}x")
 
     if speed > 2.0:
-        # Chain multiple atempo filters
         filters = []
         remaining = speed
         while remaining > 2.0:
@@ -97,13 +88,11 @@ def adjust_duration(audio_path: str, target_duration: int = VIDEO_DURATION) -> s
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"[Step 3] FFmpeg tempo adjust failed: {result.stderr[-500:]}")
-        print("[Step 3] Falling back to copy")
+        print(f"[Step 3] Tempo adjust failed, copying raw audio instead")
         subprocess.run([FFMPEG, "-y", "-i", audio_path, "-c", "copy", NARRATION_FINAL],
                        capture_output=True)
         return NARRATION_FINAL
 
-    # Verify output
     try:
         final_info = MP3(NARRATION_FINAL)
         print(f"[Step 3] Adjusted: {current_duration:.1f}s -> {final_info.info.length:.1f}s")

@@ -27,11 +27,12 @@ Movie Data:
 - Rating: {rating}/10
 
 Rules:
-1. Total word count: 280-320 words (approx 150 wpm x 2 min).
+1. Total word count: MUST be 380-420 words. This is critical — gTTS speaks at ~170 wpm so we need 400 words for 2 minutes. Do NOT write fewer than 380 words.
 2. Use exactly 4 segments with these labels: HOOK, CONTEXT, PLOT_TEASE, CTA.
-3. No spoilers in PLOT_TEASE — build curiosity only.
-4. Tone: cinematic, warm, enthusiastic.
-5. CTA must mention streaming availability or say "streaming now on major platforms".
+3. HOOK should be 30-40 words. CONTEXT should be 80-100 words. PLOT_TEASE should be 200-220 words. CTA should be 60-70 words.
+4. No spoilers in PLOT_TEASE — build curiosity only. Be descriptive, paint vivid scenes.
+5. Tone: cinematic, warm, enthusiastic.
+6. CTA must mention streaming availability or say "streaming now on major platforms".
 
 Return ONLY this JSON structure:
 {{

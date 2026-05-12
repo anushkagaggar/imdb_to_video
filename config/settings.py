@@ -31,9 +31,9 @@ GROQ_MAX_TOKENS  = 1024
 GROQ_TEMPERATURE = 0.7
 
 # ── Video ─────────────────────────────────────────────────────────────────────
-VIDEO_WIDTH    = 1280
-VIDEO_HEIGHT   = 720
-VIDEO_FPS      = 24
+VIDEO_WIDTH    = 1920
+VIDEO_HEIGHT   = 1080
+VIDEO_FPS      = 30
 VIDEO_DURATION = 120   # seconds
 
 # ── Audio ─────────────────────────────────────────────────────────────────────
