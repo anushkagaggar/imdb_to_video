@@ -26,7 +26,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 OMDB_BASE = "https://www.omdbapi.com/"
 
 # ── Groq LLM ─────────────────────────────────────────────────────────────────
-GROQ_MODEL       = "llama3-8b-8192"
+GROQ_MODEL       = "llama-3.1-8b-instant"
 GROQ_MAX_TOKENS  = 1024
 GROQ_TEMPERATURE = 0.7
 

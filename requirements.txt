@@ -1,8 +1,18 @@
+# Core
 requests==2.31.0
 python-dotenv==1.0.0
+
+# Groq LLM — pin groq + httpx to compatible versions
+# groq 0.9.0 passes 'proxies' to httpx; httpx 0.27.x still accepts it
+# httpx 0.28+ removed 'proxies' causing TypeError — so we cap httpx at 0.27.x
 groq==0.9.0
+httpx==0.27.2
+
+# Video + Image
 moviepy==1.0.3
 Pillow==10.3.0
 yt-dlp==2024.5.27
+
+# Audio
 gTTS==2.5.1
 pydub==0.25.1
