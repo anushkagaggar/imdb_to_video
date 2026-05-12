@@ -2,17 +2,17 @@
 
 ## [HOOK] (0s – 10s)
 
-Imagine a journey of friendship, laughter, and self-discovery, set against the vibrant backdrop of India's most prestigious engineering college. Get ready to be inspired by the unforgettable story of Raju, Farhan, and Rancho.
+Imagine three friends reuniting after a decade, seeking to relive their college days and the bond they shared, but little do they know, their journey will uncover a secret that will change everything.
 
-## [CONTEXT] (10s – 30s)
+## [CONTEXT] (10s – 50s)
 
-Welcome to the Imperial College of Engineering, where the cream of India's youth has gathered to chase their dreams. But for three friends, Rancho, Farhan, and Raju, their time at college was more than just a series of lectures and exams. It was an era of adventure, camaraderie, and the formation of a bond that would last a lifetime. Little did they know, their college days would lay the foundation for the most epic reunion of their lives.
+In the vibrant city of Delhi, three friends, Farhan Qureshi, Raju Rastogi, and Chatur Ramalingam, embark on a journey to reunite with their long-lost friend, Rancho, a free-spirited genius who inspired them to challenge the conventional norms of their college life. Their friendship was forged at the Imperial College of Engineering, where they stood out against the rigid rules and expectations of their Dean, Viru Sahastrabudhe. With a mix of humor, wit, and a dash of rebellion, the trio navigated their college years, leaving an indelible mark on their lives and the lives of those around them.
 
-## [PLOT_TEASE] (30s – 90s)
+## [PLOT_TEASE] (50s – 120s)
 
-As we join Farhan and Raju on their mission to find their beloved friend Rancho, they're met with a surprise that sets off a chain reaction of hilarious events and heartwarming moments. From the Dean's antics to the college's quirks, every step of their journey reminds them of the good old days. But amidst the laughter and nostalgia, there's a secret that's been kept hidden for years. What could it be? Will they finally uncover the truth behind Rancho's mysterious disappearance? And what will they discover about themselves along the way?
+As they travel across the country, they encounter a series of hilarious and heartwarming moments from their college days, but amidst the nostalgia, they also stumble upon a mystery that has been hidden for years. From the iconic '3 Idiots' sign to the infamous 'Aisa Kyaa' song, their journey is filled with laughter, tears, and the unwavering bond of friendship. But as they draw closer to their destination, they begin to realize that the truth they've been searching for may be more elusive than they ever imagined.
 
-## [CTA] (90s – 120s)
+## [CTA] (120s – 180s)
 
-Join the laughter, the tears, and the unforgettable journey of friendship in '3 Idiots'. Streaming now on major platforms, don't miss out on this cinematic masterpiece that will leave you inspired and smiling.
+Join Farhan, Raju, and Chatur on their epic journey of self-discovery, friendship, and the power of unconventional thinking. '3 Idiots' is a cinematic masterpiece that will leave you inspired, entertained, and eager for more. Streaming now on major platforms, don't miss this unforgettable ride.
 

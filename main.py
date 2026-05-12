@@ -7,8 +7,10 @@ os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe
 
 import sys
 import time
+import json
 import shutil
 import argparse
+import requests
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -31,12 +33,54 @@ BANNER = """
 
 
 def check_dependencies():
-    """Verify required system tools are available."""
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
     if not ffmpeg_path or not os.path.exists(ffmpeg_path):
         print("ERROR: FFmpeg not found. Run: pip install imageio[ffmpeg]")
         sys.exit(1)
     print(f"[Init] FFmpeg: {ffmpeg_path}")
+
+
+def fetch_imdb_gallery_html(imdb_id):
+    """
+    Fetch IMDb gallery HTML. Try direct first, if it fails (geo-blocked),
+    suggest using Apify or read from cache.
+    """
+    cache_path = "assets/imdb_gallery.html"
+
+    # Try direct request first
+    gallery_url = f"https://www.imdb.com/title/{imdb_id}/mediaindex"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    print(f"[Init] Fetching IMDb gallery for {imdb_id}...")
+
+    try:
+        resp = requests.get(gallery_url, headers=headers, timeout=20)
+        resp.raise_for_status()
+
+        # Check if we got actual image content (not a captcha/block page)
+        if "m.media-amazon.com/images/M/MV5B" in resp.text:
+            os.makedirs("assets", exist_ok=True)
+            with open(cache_path, "w", encoding="utf-8") as f:
+                f.write(resp.text)
+            print(f"[Init] IMDb gallery HTML cached -> {cache_path}")
+            return resp.text
+        else:
+            print("[Init] IMDb returned blocked/captcha page (geo-restriction)")
+    except Exception as e:
+        print(f"[Init] Direct IMDb fetch failed: {e}")
+
+    # Check if cached file exists from a previous Apify run
+    if os.path.exists(cache_path):
+        print(f"[Init] Using cached gallery HTML from {cache_path}")
+        with open(cache_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+
+    print("[Init] No cached IMDb gallery HTML found.")
+    print("[Init] To get IMDb images, save the Apify output to assets/imdb_gallery.html")
+    return None
 
 
 def run_pipeline(imdb_id: str):
@@ -46,6 +90,9 @@ def run_pipeline(imdb_id: str):
 
     total_start = time.time()
     title_slug  = imdb_id
+
+    # ── Pre-fetch IMDb gallery HTML ───────────────────────────────────────────
+    imdb_html = fetch_imdb_gallery_html(imdb_id)
 
     # ── Step 1 ────────────────────────────────────────────────────────────────
     print("\n" + "─" * 54)
@@ -77,15 +124,15 @@ def run_pipeline(imdb_id: str):
 
     # ── Step 4 ────────────────────────────────────────────────────────────────
     print("─" * 54)
-    print("  STEP 4 / 5  —  Assemble Visuals (OMDb + Web Images)")
+    print("  STEP 4 / 5  —  Assemble Visuals (IMDb Gallery)")
     print("─" * 54)
     t        = time.time()
-    manifest = build_visual_manifest(movie_data)
+    manifest = build_visual_manifest(movie_data, apify_html=imdb_html)
     print(f"  Done in {time.time() - t:.1f}s\n")
 
     # ── Step 5 ────────────────────────────────────────────────────────────────
     print("─" * 54)
-    print("  STEP 5 / 5  —  Render Final Video (FFmpeg)")
+    print("  STEP 5 / 5  —  Render Final Video (FFmpeg 1080p)")
     print("─" * 54)
     t           = time.time()
     output_path = f"{OUTPUT_DIR}/{title_slug}_2min.mp4"
