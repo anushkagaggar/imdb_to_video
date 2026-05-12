@@ -1,21 +1,13 @@
 """
-Step 4 — Assemble Visuals (TMDb-powered, multi-source)
-Pulls movie stills from multiple TMDb endpoints to maximize unique images:
-
-  1. /movie/{id}/images        — backdrops + posters (movie itself)
-  2. /movie/{id}/credits       — cast list (for cast photos)
-  3. /person/{id}/images       — actor profile photos
-  4. /person/{id}/movie_credits — actor's other movies for related backdrops
-
-Target: 120 unique images for a 2-minute video (1 image / second).
+Step 4 — Assemble Visuals (TMDb, movie-only)
+Pulls backdrops + posters strictly from the target movie via TMDb.
+Each image displays for 6 seconds → 20 unique images for a 2-minute video.
 """
 
 import os
 import json
 import subprocess
 import requests
-import shutil
-import random
 from PIL import Image, ImageStat, ImageFilter
 from config.settings import (
     TMDB_BEARER,
@@ -31,7 +23,8 @@ from config.settings import (
 )
 
 W, H = VIDEO_WIDTH, VIDEO_HEIGHT
-TARGET_IMAGES = VIDEO_DURATION  # 120
+SECONDS_PER_IMAGE = 6
+TARGET_IMAGES     = VIDEO_DURATION // SECONDS_PER_IMAGE  # 120 / 6 = 20
 
 
 # ── TMDb helpers ─────────────────────────────────────────────────────────────
@@ -44,26 +37,17 @@ def _auth_headers():
 def _auth_params():
     return {"api_key": TMDB_API_KEY} if TMDB_API_KEY and not TMDB_BEARER else {}
 
-def _tmdb_get(path, params=None):
-    params = dict(params or {})
-    params.update(_auth_params())
-    url = f"{TMDB_BASE}{path}"
-    try:
-        resp = requests.get(url, headers=_auth_headers(), params=params, timeout=20)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        print(f"[Step 4] TMDb {path} failed: {e}")
-        return {}
-
-
-# ── Image source: movie itself ───────────────────────────────────────────────
 
 def fetch_movie_images(tmdb_id):
-    """Get all backdrops + posters for the movie itself."""
-    data = _tmdb_get(f"/movie/{tmdb_id}/images", {
-        "include_image_language": "en,hi,ja,fr,es,de,it,null"
-    })
+    """Get all backdrops + posters for THIS movie only — no cast/director crossovers."""
+    url = f"{TMDB_BASE}/movie/{tmdb_id}/images"
+    params = dict(_auth_params())
+    # All language variants of stills/posters for THIS movie
+    params["include_image_language"] = "en,hi,ja,fr,es,de,it,null"
+
+    resp = requests.get(url, headers=_auth_headers(), params=params, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
 
     backdrops = []
     for img in data.get("backdrops", []):
@@ -71,7 +55,6 @@ def fetch_movie_images(tmdb_id):
             backdrops.append({
                 "url":  f"{TMDB_IMG_BASE}/original{img['file_path']}",
                 "vote": img.get("vote_average", 0),
-                "category": "movie_backdrop",
             })
     backdrops.sort(key=lambda x: x["vote"], reverse=True)
 
@@ -81,100 +64,22 @@ def fetch_movie_images(tmdb_id):
             posters.append({
                 "url":  f"{TMDB_IMG_BASE}/original{img['file_path']}",
                 "vote": img.get("vote_average", 0),
-                "category": "movie_poster",
             })
     posters.sort(key=lambda x: x["vote"], reverse=True)
 
-    print(f"[Step 4] Movie: {len(backdrops)} backdrops + {len(posters)} posters")
+    print(f"[Step 4] TMDb has {len(backdrops)} backdrops + {len(posters)} posters for this movie")
     return backdrops, posters
 
 
-# ── Image source: cast actors ────────────────────────────────────────────────
+# ── Quality filter ───────────────────────────────────────────────────────────
 
-def fetch_cast_images(tmdb_id, max_actors=8):
-    """
-    Get profile photos of the top cast members.
-    Also get backdrops from each actor's other movies for visual variety.
-    """
-    credits = _tmdb_get(f"/movie/{tmdb_id}/credits")
-    cast_list = sorted(credits.get("cast", []), key=lambda c: c.get("order", 999))[:max_actors]
-
-    all_images = []
-
-    for actor in cast_list:
-        person_id = actor.get("id")
-        if not person_id:
-            continue
-
-        # Actor profile photos
-        person_imgs = _tmdb_get(f"/person/{person_id}/images")
-        profiles = person_imgs.get("profiles", [])
-
-        for img in profiles[:5]:  # top 5 photos per actor
-            if img.get("file_path"):
-                all_images.append({
-                    "url":  f"{TMDB_IMG_BASE}/original{img['file_path']}",
-                    "vote": img.get("vote_average", 0),
-                    "category": f"cast_{actor.get('name', 'actor')[:20]}",
-                })
-
-    print(f"[Step 4] Cast: {len(all_images)} actor photos from {len(cast_list)} actors")
-    return all_images
-
-
-# ── Image source: director's filmography ─────────────────────────────────────
-
-def fetch_director_filmography_images(tmdb_id, max_movies=4):
-    """
-    Get backdrops from other movies by the same director.
-    These share visual style with the target movie.
-    """
-    credits = _tmdb_get(f"/movie/{tmdb_id}/credits")
-
-    director_id = None
-    for crew in credits.get("crew", []):
-        if crew.get("job") == "Director":
-            director_id = crew.get("id")
-            break
-
-    if not director_id:
-        return []
-
-    # Get director's other movies
-    person_credits = _tmdb_get(f"/person/{director_id}/movie_credits")
-    other_movies = person_credits.get("crew", [])
-    director_movies = [m for m in other_movies if m.get("job") == "Director"]
-    director_movies = sorted(director_movies, key=lambda m: m.get("vote_average", 0), reverse=True)
-
-    all_images = []
-    for movie in director_movies[:max_movies]:
-        m_id = movie.get("id")
-        if not m_id or m_id == tmdb_id:
-            continue
-        imgs = _tmdb_get(f"/movie/{m_id}/images", {"include_image_language": "en,null"})
-        for img in imgs.get("backdrops", [])[:6]:  # top 6 per related movie
-            if img.get("file_path"):
-                all_images.append({
-                    "url":  f"{TMDB_IMG_BASE}/original{img['file_path']}",
-                    "vote": img.get("vote_average", 0),
-                    "category": f"director_{movie.get('title', '')[:25]}",
-                })
-
-    print(f"[Step 4] Director's other films: {len(all_images)} backdrops")
-    return all_images
-
-
-# ── Quality filter (lenient — TMDb images are curated) ───────────────────────
-
-def passes_quality(path, min_w=200, min_h=200):
-    """TMDb images are curated; we mainly need to reject tiny thumbnails."""
+def passes_quality(path, min_w=300, min_h=200):
     try:
         img = Image.open(path)
         img.load()
         img = img.convert("RGB")
         if img.width < min_w or img.height < min_h:
             return False
-        # Reject mostly-uniform images
         stat = ImageStat.Stat(img.resize((100, 100)))
         if sum(stat.stddev) / 3 < 8:
             return False
@@ -221,7 +126,7 @@ def resize_to_1080p(path):
         return path
 
 
-# ── Trailer download ────────────────────────────────────────────────────────
+# ── Trailer ──────────────────────────────────────────────────────────────────
 
 def download_trailer(title, year, trailer_url=None, dest=None):
     if dest is None:
@@ -251,6 +156,7 @@ def build_visual_manifest(movie_data, apify_html=None):
     os.makedirs(IMG_DIR, exist_ok=True)
     os.makedirs(CLIP_DIR, exist_ok=True)
 
+    # Clean
     for f in os.listdir(IMG_DIR):
         p = os.path.join(IMG_DIR, f)
         if os.path.isfile(p):
@@ -260,34 +166,18 @@ def build_visual_manifest(movie_data, apify_html=None):
     if not tmdb_id:
         raise RuntimeError("No tmdb_id in movie_data. Re-run Step 1.")
 
-    # ── Gather images from ALL sources ────────────────────────────────────────
-    print("[Step 4] Gathering images from multiple TMDb endpoints...")
-
     backdrops, posters = fetch_movie_images(tmdb_id)
-    cast_images       = fetch_cast_images(tmdb_id, max_actors=8)
-    director_images   = fetch_director_filmography_images(tmdb_id, max_movies=4)
 
-    # Build download queue (priority order: movie backdrops > posters > cast > director)
-    queue = []
-    queue.extend([img["url"] for img in backdrops])
-    queue.extend([img["url"] for img in posters])
-    queue.extend([img["url"] for img in cast_images])
-    queue.extend([img["url"] for img in director_images])
+    # Priority: backdrops (landscape, match video aspect) first, then posters
+    queue = [b["url"] for b in backdrops] + [p["url"] for p in posters]
 
-    # Deduplicate URLs while preserving order
-    seen = set()
-    unique_queue = []
-    for url in queue:
-        if url not in seen:
-            seen.add(url)
-            unique_queue.append(url)
+    if not queue:
+        raise RuntimeError(f"TMDb has no images for this movie.")
 
-    print(f"[Step 4] Total unique candidates: {len(unique_queue)}")
-
-    # ── Download + filter ─────────────────────────────────────────────────────
+    # Download top images until we have TARGET_IMAGES quality picks
     good_images = []
     counter = 0
-    for url in unique_queue:
+    for url in queue:
         if len(good_images) >= TARGET_IMAGES:
             break
         counter += 1
@@ -300,53 +190,40 @@ def build_visual_manifest(movie_data, apify_html=None):
             continue
         resize_to_1080p(result)
         good_images.append(result)
-        if len(good_images) % 15 == 0:
-            print(f"[Step 4] Downloaded {len(good_images)}/{TARGET_IMAGES} unique images...")
 
     if not good_images:
-        raise RuntimeError("No images passed download/quality checks.")
+        raise RuntimeError("All TMDb images failed download/quality checks.")
 
-    print(f"[Step 4] {len(good_images)} unique quality images collected")
+    print(f"[Step 4] {len(good_images)} unique movie-only images selected")
 
-    # ── Fill remaining slots with shuffled duplicates if needed ───────────────
-    if len(good_images) < TARGET_IMAGES:
-        print(f"[Step 4] Cycling {len(good_images)} images (shuffled) to fill {TARGET_IMAGES} slots")
-        originals = good_images.copy()
-        # Shuffle for variety — duplicates won't be consecutive
-        shuffled_pool = []
-        cycles_needed = (TARGET_IMAGES // len(originals)) + 1
-        for _ in range(cycles_needed):
-            cycle = originals.copy()
-            random.shuffle(cycle)
-            shuffled_pool.extend(cycle)
-
-        dup_n = len(good_images)
-        idx = 0
-        while len(good_images) < TARGET_IMAGES:
-            src = shuffled_pool[idx]
-            dup_n += 1
-            dest = os.path.join(IMG_DIR, f"dup_{dup_n:04d}.jpg")
-            shutil.copy2(src, dest)
-            good_images.append(dest)
-            idx += 1
-
-    # ── Build manifest: 1 image = 1 second ────────────────────────────────────
+    # Build manifest — 6 seconds per image
     assets = []
-    for i, img_path in enumerate(good_images[:VIDEO_DURATION]):
+    for i, img_path in enumerate(good_images):
+        start = i * SECONDS_PER_IMAGE
+        end   = (i + 1) * SECONDS_PER_IMAGE
+        if start >= VIDEO_DURATION:
+            break
+        end = min(end, VIDEO_DURATION)
         assets.append({
             "type": "image",
             "path": img_path,
-            "start_sec": i,
-            "end_sec": i + 1,
+            "start_sec": start,
+            "end_sec": end,
         })
 
-    # ── Optional: trailer replaces last 30s ───────────────────────────────────
+    # If we have fewer than TARGET_IMAGES unique, extend last image to fill
+    if assets and assets[-1]["end_sec"] < VIDEO_DURATION:
+        assets[-1]["end_sec"] = VIDEO_DURATION
+
+    # Try trailer (replaces last 30s if available)
     trailer = download_trailer(
         movie_data["title"], movie_data["year"],
         trailer_url=movie_data.get("trailer_url"),
     )
     if trailer:
         assets = [a for a in assets if a["end_sec"] <= 90]
+        if assets and assets[-1]["end_sec"] < 90:
+            assets[-1]["end_sec"] = 90
         assets.append({"type": "video", "path": trailer, "start_sec": 90, "end_sec": 120})
 
     manifest = {
@@ -360,7 +237,7 @@ def build_visual_manifest(movie_data, apify_html=None):
     with open(MANIFEST_PATH, "w") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"[Step 4] Manifest: {len(assets)} assets -> {MANIFEST_PATH}")
+    print(f"[Step 4] Manifest: {len(assets)} assets ({SECONDS_PER_IMAGE}s each) -> {MANIFEST_PATH}")
     return manifest
 
 
