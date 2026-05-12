@@ -2,17 +2,17 @@
 
 ## [HOOK] (0s – 10s)
 
-Imagine a world where education isn't just about passing exams, but about embracing your true potential. A world where friendship and laughter become the greatest teachers of all.
+In a world where education is a game, three friends are about to take it to a whole new level. Join Farhan, Raju, and Rancho on an unforgettable journey of friendship, laughter, and self-discovery.
 
 ## [CONTEXT] (10s – 30s)
 
-Meet Farhan Qureshi, Raju Rastogi, and Rancho - three friends who dared to challenge the conventional norms of engineering college life. With their unique bond and unbridled enthusiasm, they take on the strict Dean, Viru Sahastrabudhe, and the cutthroat competitive atmosphere of Delhi's Imperial College of Engineering.
+Meet the trio, who after graduating from the Imperial College of Engineering, went their separate ways. But their bond remained unbreakable, and they often found themselves reminiscing about the crazy times they shared during college.
 
 ## [PLOT_TEASE] (30s – 90s)
 
-Ten years after graduation, Farhan and Raju embark on a journey to find their lost friend Rancho, only to discover a hidden truth that will change their lives forever. Along the way, they meet Chatur Ramalingam, a successful businessman who reminds them of a forgotten bet. As they reminisce about their college days, they're led on a wild goose chase to locate Rancho, but little do they know what secrets he's been keeping from them all this time.
+When a chance encounter brings them back together, they embark on a mission to find their beloved friend Rancho. Along the way, they're met with hilarious challenges, unexpected surprises, and a secret that will change everything they thought they knew about their friend.
 
 ## [CTA] (90s – 120s)
 
-Join the laughter, tears, and unforgettable journey of 3 Idiots, a heartwarming tale of friendship and self-discovery. Streaming now on major platforms, including Netflix, Amazon Prime, and Hotstar.
+Don't miss out on the laughter, tears, and adventure that is 3 Idiots. Streaming now on major platforms, including Netflix and Amazon Prime. Get ready to be a part of the unforgettable journey of Farhan, Raju, and Rancho.
 

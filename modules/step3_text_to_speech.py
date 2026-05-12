@@ -1,14 +1,15 @@
 """
-Step 3 — Text-to-Speech Narration via gTTS (Google TTS, free — no API key needed)
+Step 3 — Text-to-Speech Narration via gTTS
 Converts the script's full_script into an MP3 voiceover track.
-Pads or trims to exactly 120 seconds using pydub.
-No secrets required — gTTS needs no credentials.
+Uses mutagen + ffmpeg (via imageio_ffmpeg) — NO pydub dependency.
 """
 
 import os
 import subprocess
 from gtts import gTTS
-from pydub import AudioSegment
+from mutagen.mp3 import MP3
+import imageio_ffmpeg
+
 from config.settings import (
     NARRATION_RAW,
     NARRATION_FINAL,
@@ -17,19 +18,7 @@ from config.settings import (
     VIDEO_DURATION,
 )
 
-import imageio_ffmpeg
-
-ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-
-# Patch pydub to use the imageio ffmpeg binary
-import pydub.utils
-pydub.utils.FFMPEG_PATH = ffmpeg_path
-pydub.utils.FFPROBE_PATH = ffmpeg_path
-
-from pydub import AudioSegment
-AudioSegment.converter = ffmpeg_path
-AudioSegment.ffprobe = ffmpeg_path
-TARGET_MS = VIDEO_DURATION * 1000   # 120,000 ms
+FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def text_to_speech(script: dict) -> str:
@@ -48,52 +37,81 @@ def text_to_speech(script: dict) -> str:
     return NARRATION_RAW
 
 
-def adjust_duration(audio_path, target_duration=120):
-    """Adjust audio speed to fit target duration using ffmpeg directly."""
-    from mutagen.mp3 import MP3
-    import subprocess, os, imageio_ffmpeg
-
-    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    
-    # Get duration using mutagen (pure Python, no ffprobe needed)
+def adjust_duration(audio_path: str, target_duration: int = VIDEO_DURATION) -> str:
+    """
+    Adjust audio to match target duration using ffmpeg atempo filter.
+    - If audio is shorter: slow down slightly (NOT pad with silence)
+    - If audio is longer: speed up slightly
+    - If within 5s tolerance: leave as-is
+    Returns path to final audio file.
+    """
     audio_info = MP3(audio_path)
     current_duration = audio_info.info.length
     print(f"[Step 3] Audio duration: {current_duration:.1f}s (target: {target_duration}s)")
 
+    os.makedirs(os.path.dirname(NARRATION_FINAL), exist_ok=True)
+
     if abs(current_duration - target_duration) < 5:
-        print("[Step 3] Duration within tolerance, skipping adjustment")
-        return audio_path
+        print("[Step 3] Duration within tolerance, copying as final")
+        # Just copy the file
+        subprocess.run([FFMPEG, "-y", "-i", audio_path, "-c", "copy", NARRATION_FINAL],
+                       capture_output=True, check=True)
+        return NARRATION_FINAL
 
-    # Calculate speed factor
+    # Calculate tempo factor: >1 = speed up, <1 = slow down
     speed = current_duration / target_duration
-    output_path = audio_path.replace(".mp3", "_adjusted.mp3")
 
-    # Use ffmpeg directly for tempo change
+    # atempo filter accepts 0.5 to 100.0 — chain for extreme values
+    if speed < 0.5:
+        print(f"[Step 3] Speed factor {speed:.2f} too extreme, padding instead")
+        # Pad with silence using ffmpeg
+        pad_duration = target_duration - current_duration
+        cmd = [
+            FFMPEG, "-y", "-i", audio_path,
+            "-af", f"apad=pad_dur={pad_duration}",
+            "-t", str(target_duration),
+            NARRATION_FINAL,
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+        print(f"[Step 3] Padded to {target_duration}s -> {NARRATION_FINAL}")
+        return NARRATION_FINAL
+
+    if speed > 2.0:
+        # Chain multiple atempo filters
+        filters = []
+        remaining = speed
+        while remaining > 2.0:
+            filters.append("atempo=2.0")
+            remaining /= 2.0
+        filters.append(f"atempo={remaining:.4f}")
+        filter_str = ",".join(filters)
+    else:
+        filter_str = f"atempo={speed:.4f}"
+
     cmd = [
-        ffmpeg, "-y", "-i", audio_path,
-        "-filter:a", f"atempo={speed}",
-        "-vn", output_path
+        FFMPEG, "-y", "-i", audio_path,
+        "-filter:a", filter_str,
+        "-vn",
+        NARRATION_FINAL,
     ]
-    
-    # atempo filter only accepts 0.5 to 2.0, chain if needed
-    if speed > 2.0 or speed < 0.5:
-        print(f"[Step 3] Speed factor {speed:.2f} out of range, skipping adjustment")
-        return audio_path
 
-    subprocess.run(cmd, check=True, capture_output=True)
-    print(f"[Step 3] Adjusted audio saved -> {output_path}")
-    return output_path
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"[Step 3] FFmpeg tempo adjust failed: {result.stderr[-500:]}")
+        print("[Step 3] Falling back to copy")
+        subprocess.run([FFMPEG, "-y", "-i", audio_path, "-c", "copy", NARRATION_FINAL],
+                       capture_output=True)
+        return NARRATION_FINAL
 
+    # Verify output
+    try:
+        final_info = MP3(NARRATION_FINAL)
+        print(f"[Step 3] Adjusted: {current_duration:.1f}s -> {final_info.info.length:.1f}s")
+    except Exception:
+        pass
 
-def get_audio_duration_sec(path: str) -> float:
-    """Return duration of an audio file in seconds via ffprobe."""
-    result = subprocess.run([
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        path
-    ], capture_output=True, text=True)
-    return float(result.stdout.strip() or 0)
+    print(f"[Step 3] Final narration -> {NARRATION_FINAL}")
+    return NARRATION_FINAL
 
 
 if __name__ == "__main__":
@@ -102,4 +120,3 @@ if __name__ == "__main__":
         script = json.load(f)
     raw_path   = text_to_speech(script)
     final_path = adjust_duration(raw_path)
-    print(f"[Step 3] Final audio duration: {get_audio_duration_sec(final_path):.1f}s")

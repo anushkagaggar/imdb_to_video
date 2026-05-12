@@ -1,21 +1,19 @@
 """
 main.py — IMDb-to-Video Pipeline Orchestrator
-Loads all secrets once via config.settings at startup.
 Run: python main.py --imdb tt0111161
 """
 import imageio_ffmpeg, os
 os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
+
 import sys
 import time
+import shutil
 import argparse
 from pathlib import Path
 
-# ── Add project root to Python path so "from config.settings import ..." works ──
 sys.path.insert(0, str(Path(__file__).parent))
 
-# ── Import config first — this is the ONLY place load_dotenv() is called ──────
 from config.settings import validate_secrets
-
 from modules.step1_fetch_data       import fetch_movie_data, save_movie_data
 from modules.step2_generate_script  import generate_script, save_script
 from modules.step3_text_to_speech   import text_to_speech, adjust_duration
@@ -32,10 +30,18 @@ BANNER = """
 """
 
 
+def check_dependencies():
+    """Verify required system tools are available."""
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    if not ffmpeg_path or not os.path.exists(ffmpeg_path):
+        print("ERROR: FFmpeg not found. Run: pip install imageio[ffmpeg]")
+        sys.exit(1)
+    print(f"[Init] FFmpeg: {ffmpeg_path}")
+
+
 def run_pipeline(imdb_id: str):
     print(BANNER)
-
-    # Validate secrets once — raises clearly if .env keys are missing
+    check_dependencies()
     validate_secrets()
 
     total_start = time.time()
@@ -71,7 +77,7 @@ def run_pipeline(imdb_id: str):
 
     # ── Step 4 ────────────────────────────────────────────────────────────────
     print("─" * 54)
-    print("  STEP 4 / 5  —  Assemble Visuals (OMDb poster + yt-dlp)")
+    print("  STEP 4 / 5  —  Assemble Visuals (OMDb + Web Images)")
     print("─" * 54)
     t        = time.time()
     manifest = build_visual_manifest(movie_data)
@@ -98,7 +104,7 @@ def run_pipeline(imdb_id: str):
     print(f"  PIPELINE COMPLETE in {elapsed:.0f}s")
     print(f"  Movie  : {movie_data['title']} ({movie_data['year']})")
     print(f"  Output : {output_path}")
-    print(f"  Size   : {size_mb:.1f} MB  |  Duration: 2 min 00 sec")
+    print(f"  Size   : {size_mb:.1f} MB  |  Duration: ~2 min")
     print("=" * 54)
 
     return output_path
