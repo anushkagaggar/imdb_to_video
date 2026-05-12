@@ -8,6 +8,10 @@ import os
 import json
 import subprocess
 import urllib.request
+import imageio_ffmpeg
+
+FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+
 from config.settings import (
     VIDEO_WIDTH,
     VIDEO_HEIGHT,
@@ -28,13 +32,24 @@ W, H = VIDEO_WIDTH, VIDEO_HEIGHT
 
 def probe_duration(path: str) -> float:
     result = subprocess.run([
-        "ffprobe", "-v", "error",
+        FFMPEG, "-v", "error",
+        "-i", path,
+        "-f", "null", "-"
+    ], capture_output=True, text=True, timeout=15)
+    # Parse duration from stderr
+    import re
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+)\.(\d+)", result.stderr)
+    if match:
+        h, m, s, cs = match.groups()
+        return int(h) * 3600 + int(m) * 60 + int(s) + int(cs) / 100
+    # Fallback: try ffprobe-style with ffmpeg
+    result2 = subprocess.run([
+        FFMPEG, "-i", path,
         "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        path,
+        "-v", "quiet", "-of", "csv=p=0"
     ], capture_output=True, text=True, timeout=15)
     try:
-        return float(result.stdout.strip())
+        return float(result2.stdout.strip())
     except ValueError:
         return 0.0
 
@@ -145,7 +160,7 @@ def render_video(manifest: dict, narration_path: str, output_path: str) -> str:
     full_filter = filter_complex + ";" + audio_filter
 
     cmd = [
-        "ffmpeg", "-y",
+        FFMPEG, "-y",
         *visual_inputs,
         *audio_inputs,
         "-filter_complex", full_filter,

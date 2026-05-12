@@ -17,7 +17,18 @@ from config.settings import (
     VIDEO_DURATION,
 )
 
+import imageio_ffmpeg
 
+ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+
+# Patch pydub to use the imageio ffmpeg binary
+import pydub.utils
+pydub.utils.FFMPEG_PATH = ffmpeg_path
+pydub.utils.FFPROBE_PATH = ffmpeg_path
+
+from pydub import AudioSegment
+AudioSegment.converter = ffmpeg_path
+AudioSegment.ffprobe = ffmpeg_path
 TARGET_MS = VIDEO_DURATION * 1000   # 120,000 ms
 
 
@@ -37,25 +48,41 @@ def text_to_speech(script: dict) -> str:
     return NARRATION_RAW
 
 
-def adjust_duration(audio_path: str) -> str:
-    """Pad with silence or trim audio to exactly TARGET_MS. Returns final path."""
-    audio    = AudioSegment.from_mp3(audio_path)
-    duration = len(audio)
+def adjust_duration(audio_path, target_duration=120):
+    """Adjust audio speed to fit target duration using ffmpeg directly."""
+    from mutagen.mp3 import MP3
+    import subprocess, os, imageio_ffmpeg
 
-    print(f"[Step 3] Raw duration: {duration / 1000:.1f}s | Target: {TARGET_MS / 1000:.0f}s")
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    
+    # Get duration using mutagen (pure Python, no ffprobe needed)
+    audio_info = MP3(audio_path)
+    current_duration = audio_info.info.length
+    print(f"[Step 3] Audio duration: {current_duration:.1f}s (target: {target_duration}s)")
 
-    if duration < TARGET_MS:
-        silence = AudioSegment.silent(duration=TARGET_MS - duration)
-        audio   = audio + silence
-        print(f"[Step 3] Padded {(TARGET_MS - duration) / 1000:.1f}s of silence")
-    elif duration > TARGET_MS:
-        audio = audio[:TARGET_MS]
-        print(f"[Step 3] Trimmed to {TARGET_MS / 1000:.0f}s")
+    if abs(current_duration - target_duration) < 5:
+        print("[Step 3] Duration within tolerance, skipping adjustment")
+        return audio_path
 
-    os.makedirs(os.path.dirname(NARRATION_FINAL), exist_ok=True)
-    audio.export(NARRATION_FINAL, format="mp3", bitrate=AUDIO_BITRATE)
-    print(f"[Step 3] Final narration -> {NARRATION_FINAL}")
-    return NARRATION_FINAL
+    # Calculate speed factor
+    speed = current_duration / target_duration
+    output_path = audio_path.replace(".mp3", "_adjusted.mp3")
+
+    # Use ffmpeg directly for tempo change
+    cmd = [
+        ffmpeg, "-y", "-i", audio_path,
+        "-filter:a", f"atempo={speed}",
+        "-vn", output_path
+    ]
+    
+    # atempo filter only accepts 0.5 to 2.0, chain if needed
+    if speed > 2.0 or speed < 0.5:
+        print(f"[Step 3] Speed factor {speed:.2f} out of range, skipping adjustment")
+        return audio_path
+
+    subprocess.run(cmd, check=True, capture_output=True)
+    print(f"[Step 3] Adjusted audio saved -> {output_path}")
+    return output_path
 
 
 def get_audio_duration_sec(path: str) -> float:

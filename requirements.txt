@@ -16,3 +16,4 @@ yt-dlp==2024.5.27
 # Audio
 gTTS==2.5.1
 pydub==0.25.1
+mutagen

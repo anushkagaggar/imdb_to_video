@@ -3,8 +3,8 @@ main.py — IMDb-to-Video Pipeline Orchestrator
 Loads all secrets once via config.settings at startup.
 Run: python main.py --imdb tt0111161
 """
-
-import os
+import imageio_ffmpeg, os
+os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
 import sys
 import time
 import argparse
