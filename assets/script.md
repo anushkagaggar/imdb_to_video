@@ -2,17 +2,17 @@
 
 ## [HOOK] (0s – 10s)
 
-In a land of millions, where dreams are made and broken, three friends are about to take the road less traveled, and change the game forever.
+Imagine a college campus where the ordinary rules are turned upside down by a genius, a dreamer, and a jokester – three friends who will change the lives of everyone around them forever.
 
 ## [CONTEXT] (10s – 30s)
 
-Welcome to the prestigious Indian Institute of Engineering, where the brightest minds gather to shape the future, but beneath the surface, a world of chaos and rebellion awaits. Meet Rancho, a free-spirited college student, who defies the norms and turns the campus upside down with his outrageous antics. Alongside his two best friends, Farhan and Raju, the trio becomes the talk of the town, and the target of the school's strict dean, Virus. As the drama unfolds, Rancho's carefree spirit catches the eye of the dean's daughter, and Virus sets out to bring the '3 Idiots' to their knees.
+Welcome to India's most prestigious university, a place where the brightest minds come to learn, grow, and discover their passions. Here, we meet Rancho, a young man with a heart of gold, a razor-sharp mind, and a sense of humor that can light up even the darkest of days. Alongside his two best friends, Farhan and Raju, Rancho sets out to shake things up and challenge the status quo.
 
 ## [PLOT_TEASE] (30s – 90s)
 
-As the semester begins, Rancho's unorthodox methods of teaching and learning leave the students and faculty baffled. Farhan and Raju are initially hesitant to join in on the fun, but soon find themselves swept up in the chaos. Meanwhile, Virus is determined to prove his worth as the school's top administrator, and sees the '3 Idiots' as a threat to his authority. As the stakes rise, the friends must navigate the complexities of friendship, love, and loyalty, all while trying to stay one step ahead of Virus. Will they be able to outsmart the dean and graduate with their dignity intact, or will they become the latest victims of his ruthless ambition?
+As Rancho and his friends navigate the ups and downs of college life, they encounter a world of contradictions – a place where tradition and modernity collide, where intellect and creativity are valued above all else, and where the pursuit of knowledge is a never-ending journey. From pranks and mischief to romance and heartbreak, their adventures will take them to the very limits of friendship and loyalty. But as they stumble, struggle, and grow, they will also discover the true meaning of friendship, love, and the importance of following one's dreams.
 
 ## [CTA] (90s – 120s)
 
-Find out in the heartwarming and hilarious film, '3 Idiots', streaming now on major platforms. With its witty dialogue, memorable characters, and universal themes, this cinematic masterpiece is a must-watch for anyone who's ever felt like an outsider. So grab some popcorn, get comfortable, and join the journey of a lifetime with Rancho, Farhan, and Raju. '3 Idiots' - a film that will make you laugh, cry, and cheer for the underdog. Streaming now on Netflix, Amazon Prime, and more.
+So, join Rancho, Farhan, and Raju on their unforgettable journey of self-discovery and growth. With its universal themes, witty humor, and memorable characters, 3 Idiots is a must-watch film that will leave you laughing, crying, and inspired. Streaming now on major platforms.
 

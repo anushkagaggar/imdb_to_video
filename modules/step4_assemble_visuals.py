@@ -196,13 +196,14 @@ def build_visual_manifest(movie_data, apify_html=None):
 
     print(f"[Step 4] {len(good_images)} unique movie-only images selected")
 
-    # Build manifest — 6 seconds per image
+    # Build manifest — 6 seconds per image, last one extends to fill 120s
     assets = []
     for i, img_path in enumerate(good_images):
         start = i * SECONDS_PER_IMAGE
-        end   = (i + 1) * SECONDS_PER_IMAGE
         if start >= VIDEO_DURATION:
             break
+        end = (i + 1) * SECONDS_PER_IMAGE
+        # Cap intermediate at VIDEO_DURATION
         end = min(end, VIDEO_DURATION)
         assets.append({
             "type": "image",
@@ -211,8 +212,9 @@ def build_visual_manifest(movie_data, apify_html=None):
             "end_sec": end,
         })
 
-    # If we have fewer than TARGET_IMAGES unique, extend last image to fill
-    if assets and assets[-1]["end_sec"] < VIDEO_DURATION:
+    # CRITICAL: ensure the last asset extends to exactly VIDEO_DURATION
+    # so the video is always exactly 2 minutes long.
+    if assets:
         assets[-1]["end_sec"] = VIDEO_DURATION
 
     # Try trailer (replaces last 30s if available)
@@ -221,10 +223,20 @@ def build_visual_manifest(movie_data, apify_html=None):
         trailer_url=movie_data.get("trailer_url"),
     )
     if trailer:
-        assets = [a for a in assets if a["end_sec"] <= 90]
-        if assets and assets[-1]["end_sec"] < 90:
-            assets[-1]["end_sec"] = 90
-        assets.append({"type": "video", "path": trailer, "start_sec": 90, "end_sec": 120})
+        # Keep images covering 0-90s; trailer covers 90-120s
+        kept = []
+        for a in assets:
+            if a["start_sec"] >= 90:
+                continue
+            if a["end_sec"] > 90:
+                a = dict(a)
+                a["end_sec"] = 90
+            kept.append(a)
+        # Ensure no gap before trailer
+        if kept and kept[-1]["end_sec"] < 90:
+            kept[-1]["end_sec"] = 90
+        kept.append({"type": "video", "path": trailer, "start_sec": 90, "end_sec": 120})
+        assets = kept
 
     manifest = {
         "movie_title":        movie_data["title"],

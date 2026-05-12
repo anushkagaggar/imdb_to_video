@@ -107,8 +107,14 @@ def build_ffmpeg_filter(manifest: dict) -> tuple[list[str], str]:
         raise RuntimeError("No valid visual assets found.")
 
     n = len(video_labels)
+    # Concat all segments, then tpad to guarantee exactly VIDEO_DURATION seconds.
+    # tpad clones the last frame if the stream is shorter than the target duration.
     filter_parts.append(
-        "".join(video_labels) + f"concat=n={n}:v=1:a=0[vout]"
+        "".join(video_labels)
+        + f"concat=n={n}:v=1:a=0,"
+        + f"tpad=stop_mode=clone:stop_duration={VIDEO_DURATION},"
+        + f"trim=duration={VIDEO_DURATION},"
+        + "setpts=PTS-STARTPTS[vout]"
     )
 
     return input_args, ";".join(filter_parts)
@@ -123,7 +129,8 @@ def render_video(manifest: dict, narration_path: str, output_path: str) -> str:
     narr_idx = len(visual_inputs) // 2
 
     audio_inputs = ["-i", narration_path]
-    audio_filter = f"[{narr_idx}:a]volume=1.0[narr]"
+    # apad ensures audio stream is at least VIDEO_DURATION seconds (silence if needed)
+    audio_filter = f"[{narr_idx}:a]apad=whole_dur={VIDEO_DURATION},atrim=duration={VIDEO_DURATION},volume=1.0[narr]"
 
     if bg_music and os.path.exists(bg_music):
         audio_inputs += ["-i", bg_music]
