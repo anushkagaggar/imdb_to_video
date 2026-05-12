@@ -1,29 +1,20 @@
 """
-Step 1 — Fetch Movie Data from OMDb API (free, works in India)
+Step 1 — Fetch Movie Data from OMDb API
 Endpoint: https://www.omdbapi.com/?i=<imdb_id>&apikey=<key>&plot=full
-One call returns everything: title, year, plot, cast, director, genre, rating, poster URL.
+Returns title, year, plot, cast, director, genres, rating, and a direct poster URL.
 """
 
-import os
 import json
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
-OMDB_BASE    = "https://www.omdbapi.com/"
+from config.settings import OMDB_API_KEY, OMDB_BASE
+import os
 
 
 def fetch_movie_data(imdb_id: str) -> dict:
     """
-    Given an IMDb ID, fetch full movie metadata from OMDb in a single API call.
-    Returns a clean dict ready for all downstream pipeline steps.
+    Fetch full movie metadata from OMDb in a single API call.
+    Returns a clean dict consumed by all downstream pipeline steps.
     """
-    if not OMDB_API_KEY:
-        raise ValueError("OMDB_API_KEY not set in .env")
-
-    # Single request — OMDb returns everything in one shot
     resp = requests.get(OMDB_BASE, params={
         "i":      imdb_id,
         "apikey": OMDB_API_KEY,
@@ -36,28 +27,27 @@ def fetch_movie_data(imdb_id: str) -> dict:
     if data.get("Response") == "False":
         raise ValueError(f"OMDb error for '{imdb_id}': {data.get('Error')}")
 
-    # Parse cast (comma-separated string -> list)
-    cast_raw = data.get("Actors", "")
-    cast     = [a.strip() for a in cast_raw.split(",") if a.strip()]
+    # Cast — OMDb returns a comma-separated string
+    cast = [a.strip() for a in data.get("Actors", "").split(",") if a.strip()]
 
-    # Parse genres
-    genres_raw = data.get("Genre", "")
-    genres     = [g.strip() for g in genres_raw.split(",") if g.strip()]
+    # Genres — same format
+    genres = [g.strip() for g in data.get("Genre", "").split(",") if g.strip()]
 
-    # IMDb rating
+    # Rating
     try:
         rating = float(data.get("imdbRating", "0"))
     except ValueError:
         rating = 0.0
 
-    # Poster — OMDb returns a direct image URL in the free tier
+    # Poster URL — direct image link from OMDb
     poster_url = data.get("Poster")
     if poster_url == "N/A":
         poster_url = None
 
-    # Build YouTube trailer search URL (no extra API needed)
-    title       = data.get("Title", "")
-    year        = data.get("Year", "")[:4]
+    title = data.get("Title", "")
+    year  = data.get("Year", "")[:4]
+
+    # YouTube trailer search URL (no API key needed — yt-dlp handles download)
     trailer_url = (
         "https://www.youtube.com/results?search_query="
         + title.replace(" ", "+") + "+" + year + "+official+trailer"
@@ -83,7 +73,7 @@ def fetch_movie_data(imdb_id: str) -> dict:
         "trailer_url":  trailer_url,
     }
 
-    print(f"[Step 1] Fetched: {movie_data['title']} ({movie_data['year']}) - {movie_data['rating']}/10")
+    print(f"[Step 1] Fetched: {movie_data['title']} ({movie_data['year']}) — {movie_data['rating']}/10")
     return movie_data
 
 
@@ -95,6 +85,8 @@ def save_movie_data(movie_data: dict, path: str = "assets/movie_data.json"):
 
 
 if __name__ == "__main__":
+    from config.settings import validate_secrets
+    validate_secrets()
     data = fetch_movie_data("tt0111161")
     save_movie_data(data)
     print(json.dumps(data, indent=2))

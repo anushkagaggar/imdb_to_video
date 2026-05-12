@@ -1,98 +1,65 @@
 """
-Step 3 — Text-to-Speech Narration via gTTS (Google TTS, free)
+Step 3 — Text-to-Speech Narration via gTTS (Google TTS, free — no API key needed)
 Converts the script's full_script into an MP3 voiceover track.
-Pads or trims to exactly 120 seconds using pydub + ffmpeg.
+Pads or trims to exactly 120 seconds using pydub.
+No secrets required — gTTS needs no credentials.
 """
 
 import os
-import json
 import subprocess
 from gtts import gTTS
 from pydub import AudioSegment
-from dotenv import load_dotenv
+from config.settings import (
+    NARRATION_RAW,
+    NARRATION_FINAL,
+    TTS_LANGUAGE,
+    AUDIO_BITRATE,
+    VIDEO_DURATION,
+)
 
-load_dotenv()
 
-TARGET_DURATION_MS = 120_000   # 2 minutes in milliseconds
-AUDIO_OUT          = "assets/audio/narration.mp3"
-AUDIO_PADDED       = "assets/audio/narration_final.mp3"
+TARGET_MS = VIDEO_DURATION * 1000   # 120,000 ms
 
 
 def text_to_speech(script: dict) -> str:
-    """
-    Convert script full_script to MP3 using gTTS.
-    Returns path to the raw narration MP3.
-    """
-    os.makedirs("assets/audio", exist_ok=True)
+    """Convert script full_script to MP3 using gTTS. Returns raw audio path."""
+    os.makedirs(os.path.dirname(NARRATION_RAW), exist_ok=True)
 
     full_text = script.get("full_script", "")
     if not full_text:
-        # Fallback: join all segment texts
         full_text = " ".join(s["text"] for s in script.get("segments", []))
 
-    print(f"[Step 3] 🎙️  Converting {len(full_text.split())} words to speech...")
+    print(f"[Step 3] Converting {len(full_text.split())} words to speech...")
 
-    tts = gTTS(text=full_text, lang="en", slow=False)
-    tts.save(AUDIO_OUT)
-    print(f"[Step 3] ✅ Raw narration saved → {AUDIO_OUT}")
+    tts = gTTS(text=full_text, lang=TTS_LANGUAGE, slow=False)
+    tts.save(NARRATION_RAW)
+    print(f"[Step 3] Raw narration saved -> {NARRATION_RAW}")
+    return NARRATION_RAW
 
-    return AUDIO_OUT
 
-
-def adjust_duration(audio_path: str, target_ms: int = TARGET_DURATION_MS) -> str:
-    """
-    Pad or trim audio to hit exactly target_ms using pydub.
-    Returns path to duration-adjusted MP3.
-    """
+def adjust_duration(audio_path: str) -> str:
+    """Pad with silence or trim audio to exactly TARGET_MS. Returns final path."""
     audio    = AudioSegment.from_mp3(audio_path)
     duration = len(audio)
 
-    print(f"[Step 3] ⏱️  Raw duration: {duration / 1000:.1f}s | Target: {target_ms / 1000:.0f}s")
+    print(f"[Step 3] Raw duration: {duration / 1000:.1f}s | Target: {TARGET_MS / 1000:.0f}s")
 
-    if duration < target_ms:
-        # Pad with silence
-        silence  = AudioSegment.silent(duration=target_ms - duration)
-        audio    = audio + silence
-        print(f"[Step 3] ➕ Padded {(target_ms - duration) / 1000:.1f}s of silence")
-    elif duration > target_ms:
-        # Trim to target
-        audio = audio[:target_ms]
-        print(f"[Step 3] ✂️  Trimmed to {target_ms / 1000:.0f}s")
+    if duration < TARGET_MS:
+        silence = AudioSegment.silent(duration=TARGET_MS - duration)
+        audio   = audio + silence
+        print(f"[Step 3] Padded {(TARGET_MS - duration) / 1000:.1f}s of silence")
+    elif duration > TARGET_MS:
+        audio = audio[:TARGET_MS]
+        print(f"[Step 3] Trimmed to {TARGET_MS / 1000:.0f}s")
 
-    audio.export(AUDIO_PADDED, format="mp3", bitrate="128k")
-    print(f"[Step 3] 💾 Final narration saved → {AUDIO_PADDED}")
-    return AUDIO_PADDED
-
-
-def generate_per_segment_audio(script: dict) -> list[dict]:
-    """
-    Optional: generate a separate MP3 per segment for fine-grained timeline control.
-    Returns list of {label, path, start_sec, end_sec}.
-    """
-    os.makedirs("assets/audio/segments", exist_ok=True)
-    segment_files = []
-
-    for seg in script.get("segments", []):
-        label = seg["label"]
-        path  = f"assets/audio/segments/{label.lower()}.mp3"
-
-        tts = gTTS(text=seg["text"], lang="en", slow=False)
-        tts.save(path)
-
-        segment_files.append({
-            "label":     label,
-            "path":      path,
-            "start_sec": seg["start_sec"],
-            "end_sec":   seg["end_sec"],
-            "text":      seg["text"],
-        })
-        print(f"[Step 3] 🎙️  Segment [{label}] → {path}")
-
-    return segment_files
+    os.makedirs(os.path.dirname(NARRATION_FINAL), exist_ok=True)
+    audio.export(NARRATION_FINAL, format="mp3", bitrate=AUDIO_BITRATE)
+    print(f"[Step 3] Final narration -> {NARRATION_FINAL}")
+    return NARRATION_FINAL
 
 
 def get_audio_duration_sec(path: str) -> float:
-    """Return duration of an audio file in seconds using ffprobe."""
+    """Return duration of an audio file in seconds via ffprobe."""
     result = subprocess.run([
         "ffprobe", "-v", "error",
         "-show_entries", "format=duration",
@@ -103,10 +70,9 @@ def get_audio_duration_sec(path: str) -> float:
 
 
 if __name__ == "__main__":
+    import json
     with open("assets/script.json") as f:
         script = json.load(f)
-
     raw_path   = text_to_speech(script)
     final_path = adjust_duration(raw_path)
-    duration   = get_audio_duration_sec(final_path)
-    print(f"[Step 3] 🎵 Final audio duration: {duration:.1f}s")
+    print(f"[Step 3] Final audio duration: {get_audio_duration_sec(final_path):.1f}s")

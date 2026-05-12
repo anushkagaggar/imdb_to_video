@@ -1,8 +1,8 @@
 """
 Step 4 — Assemble Visuals
-Downloads poster image from OMDb and trailer clip via yt-dlp (both free).
+Downloads poster from OMDb and trailer via yt-dlp (both free, no extra keys).
+Generates title card and cast card locally using Pillow.
 Builds a manifest mapping each visual asset to a timestamp range.
-OMDb free tier gives a direct poster URL — no extra API needed.
 """
 
 import os
@@ -10,20 +10,21 @@ import json
 import subprocess
 import requests
 from PIL import Image, ImageDraw, ImageFont
-from dotenv import load_dotenv
+from config.settings import (
+    OMDB_API_KEY,
+    IMG_DIR,
+    CLIP_DIR,
+    MANIFEST_PATH,
+    VIDEO_WIDTH,
+    VIDEO_HEIGHT,
+)
 
-load_dotenv()
-
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
-IMG_DIR      = "assets/images"
-CLIP_DIR     = "assets/clips"
-W, H         = 1280, 720
+W, H = VIDEO_WIDTH, VIDEO_HEIGHT
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Image helpers ─────────────────────────────────────────────────────────────
 
 def download_image(url: str, dest: str) -> str | None:
-    """Download an image from URL; return dest path or None on failure."""
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     try:
         r = requests.get(url, timeout=15)
@@ -33,59 +34,52 @@ def download_image(url: str, dest: str) -> str | None:
         print(f"[Step 4] Downloaded image -> {dest}")
         return dest
     except Exception as e:
-        print(f"[Step 4] Failed to download {url}: {e}")
+        print(f"[Step 4] Image download failed: {e}")
         return None
 
 
-def resize_image(path: str, width: int = W, height: int = H) -> str:
-    """Resize image to video resolution using crop-to-fill."""
+def resize_image(path: str) -> str:
+    """Crop-to-fill resize to video resolution."""
     img = Image.open(path).convert("RGB")
-
-    img_ratio    = img.width / img.height
-    target_ratio = width / height
-
-    if img_ratio > target_ratio:
-        new_h = height
-        new_w = int(img.width * height / img.height)
+    ir  = img.width / img.height
+    tr  = W / H
+    if ir > tr:
+        new_h, new_w = H, int(img.width * H / img.height)
     else:
-        new_w = width
-        new_h = int(img.height * width / img.width)
-
+        new_w, new_h = W, int(img.height * W / img.width)
     img  = img.resize((new_w, new_h), Image.LANCZOS)
-    left = (new_w - width)  // 2
-    top  = (new_h - height) // 2
-    img  = img.crop((left, top, left + width, top + height))
+    left = (new_w - W) // 2
+    top  = (new_h - H) // 2
+    img  = img.crop((left, top, left + W, top + H))
     img.save(path)
     return path
 
 
-def create_title_card(movie_data: dict, path: str) -> str:
-    """Generate a title card image with movie name, year, rating and director."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    img  = Image.new("RGB", (W, H), color=(10, 10, 10))
-    draw = ImageDraw.Draw(img)
-
-    for i in range(H):
-        draw.line([(0, i), (W, i)], fill=(0, 0, 0))
-
-    title    = movie_data["title"]
-    year     = movie_data["year"]
-    rating   = movie_data["rating"]
-    director = movie_data["director"]
-
+def _load_fonts():
     try:
-        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
+        bold  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
+        med   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+        small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
     except Exception:
-        font_large = font_small = ImageFont.load_default()
+        bold = med = small = ImageFont.load_default()
+    return bold, med, small
 
-    # Title
-    bbox   = draw.textbbox((0, 0), title, font=font_large)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+def create_title_card(movie_data: dict, path: str) -> str:
+    """Dark card with title, year, rating, director."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    img  = Image.new("RGB", (W, H), (10, 10, 10))
+    draw = ImageDraw.Draw(img)
+    font_large, _, font_small = _load_fonts()
+
+    title = movie_data["title"]
+    sub   = f"{movie_data['year']}  |  IMDb: {movie_data['rating']}/10  |  Dir: {movie_data['director']}"
+
+    bbox = draw.textbbox((0, 0), title, font=font_large)
+    tw   = bbox[2] - bbox[0]
+    th   = bbox[3] - bbox[1]
     draw.text(((W - tw) // 2, H // 2 - th - 30), title, font=font_large, fill=(255, 255, 255))
 
-    # Year, Rating, Director
-    sub   = f"{year}  |  IMDb: {rating}/10  |  Dir: {director}"
     bbox2 = draw.textbbox((0, 0), sub, font=font_small)
     sw    = bbox2[2] - bbox2[0]
     draw.text(((W - sw) // 2, H // 2 + 20), sub, font=font_small, fill=(200, 200, 200))
@@ -96,67 +90,55 @@ def create_title_card(movie_data: dict, path: str) -> str:
 
 
 def create_cast_card(movie_data: dict, path: str) -> str:
-    """Generate a cast & genre info card."""
+    """Dark card showing cast, genres, awards."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    img  = Image.new("RGB", (W, H), color=(15, 15, 30))
+    img  = Image.new("RGB", (W, H), (15, 15, 30))
     draw = ImageDraw.Draw(img)
+    _, font_med, font_small = _load_fonts()
 
-    try:
-        font_med   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
-    except Exception:
-        font_med = font_small = ImageFont.load_default()
-
-    cast_str  = "Cast: " + ", ".join(movie_data.get("cast", []))
-    genre_str = "Genre: " + ", ".join(movie_data.get("genres", []))
-    award_str = movie_data.get("awards", "")[:80]
-
-    draw.text((80, 200), cast_str,  font=font_med,   fill=(255, 220, 100))
-    draw.text((80, 280), genre_str, font=font_small,  fill=(200, 200, 200))
-    if award_str:
-        draw.text((80, 340), award_str, font=font_small, fill=(180, 180, 180))
+    draw.text((80, 200), "Cast: "  + ", ".join(movie_data.get("cast",   [])), font=font_med,   fill=(255, 220, 100))
+    draw.text((80, 280), "Genre: " + ", ".join(movie_data.get("genres", [])), font=font_small, fill=(200, 200, 200))
+    awards = movie_data.get("awards", "")[:80]
+    if awards:
+        draw.text((80, 340), awards, font=font_small, fill=(180, 180, 180))
 
     img.save(path)
     print(f"[Step 4] Cast card -> {path}")
     return path
 
 
-def download_trailer_via_yt_dlp(trailer_search_url: str,
-                                 movie_title: str,
-                                 year: str,
-                                 dest: str = f"{CLIP_DIR}/trailer.mp4") -> str | None:
-    """
-    Download trailer from YouTube using yt-dlp.
-    Constructs a ytsearch query from the movie title so we get the right video.
-    """
+# ── Trailer download ──────────────────────────────────────────────────────────
+
+def download_trailer_via_yt_dlp(movie_title: str, year: str,
+                                  dest: str = None) -> str | None:
+    """Download best matching trailer from YouTube via yt-dlp (no API key)."""
+    if dest is None:
+        dest = os.path.join(CLIP_DIR, "trailer.mp4")
     os.makedirs(os.path.dirname(dest), exist_ok=True)
 
-    search_query = f"ytsearch1:{movie_title} {year} official trailer"
-
-    cmd = [
-        "yt-dlp",
-        "--no-playlist",
+    query = f"ytsearch1:{movie_title} {year} official trailer"
+    cmd   = [
+        "yt-dlp", "--no-playlist",
         "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]",
         "--merge-output-format", "mp4",
-        "-o", dest,
-        "--quiet",
-        "--no-warnings",
-        search_query,
+        "-o", dest, "--quiet", "--no-warnings",
+        query,
     ]
     try:
         subprocess.run(cmd, check=True, timeout=120)
-        print(f"[Step 4] Trailer clip -> {dest}")
+        print(f"[Step 4] Trailer -> {dest}")
         return dest
     except Exception as e:
-        print(f"[Step 4] yt-dlp failed: {e}  (video will render with images only)")
+        print(f"[Step 4] yt-dlp failed: {e} (pipeline continues with images only)")
         return None
 
 
+# ── Manifest builder ──────────────────────────────────────────────────────────
+
 def build_visual_manifest(movie_data: dict) -> dict:
     """
-    Orchestrate all visual downloads and return a manifest that maps
-    each asset to a timeline segment for Step 5.
-    Uses only OMDb (poster) + yt-dlp (trailer) — no TMDb required.
+    Download / generate all visuals and return a timestamped manifest for Step 5.
+    No API keys beyond OMDB_API_KEY (already in config.settings).
     """
     os.makedirs(IMG_DIR, exist_ok=True)
     os.makedirs(CLIP_DIR, exist_ok=True)
@@ -164,38 +146,31 @@ def build_visual_manifest(movie_data: dict) -> dict:
     assets = []
 
     # 1. Title card — HOOK (0–10 s)
-    title_card = create_title_card(movie_data, f"{IMG_DIR}/title_card.jpg")
-    assets.append({"type": "image", "path": title_card, "start_sec": 0, "end_sec": 10})
+    tc = create_title_card(movie_data, os.path.join(IMG_DIR, "title_card.jpg"))
+    assets.append({"type": "image", "path": tc, "start_sec": 0, "end_sec": 10})
 
-    # 2. Movie poster from OMDb — CONTEXT (10–30 s)
+    # 2. OMDb poster — CONTEXT (10–30 s)
+    poster_path = None
     if movie_data.get("poster_url"):
-        poster = download_image(movie_data["poster_url"], f"{IMG_DIR}/poster.jpg")
-        if poster:
-            resize_image(poster)
-            assets.append({"type": "image", "path": poster, "start_sec": 10, "end_sec": 30})
+        poster_path = download_image(movie_data["poster_url"], os.path.join(IMG_DIR, "poster.jpg"))
+        if poster_path:
+            resize_image(poster_path)
+            assets.append({"type": "image", "path": poster_path, "start_sec": 10, "end_sec": 30})
 
-    # 3. Cast card (generated locally) — PLOT_TEASE start (30–55 s)
-    cast_card = create_cast_card(movie_data, f"{IMG_DIR}/cast_card.jpg")
-    assets.append({"type": "image", "path": cast_card, "start_sec": 30, "end_sec": 55})
+    # 3. Cast card — PLOT_TEASE start (30–55 s)
+    cc = create_cast_card(movie_data, os.path.join(IMG_DIR, "cast_card.jpg"))
+    assets.append({"type": "image", "path": cc, "start_sec": 30, "end_sec": 55})
 
-    # 4. Poster again with different crop — PLOT_TEASE mid (55–90 s)
-    if movie_data.get("poster_url"):
-        assets.append({"type": "image", "path": f"{IMG_DIR}/poster.jpg",
-                        "start_sec": 55, "end_sec": 90})
-    else:
-        assets.append({"type": "image", "path": title_card, "start_sec": 55, "end_sec": 90})
+    # 4. Poster again — PLOT_TEASE mid (55–90 s)
+    fallback = poster_path or tc
+    assets.append({"type": "image", "path": fallback, "start_sec": 55, "end_sec": 90})
 
-    # 5. Trailer clip via yt-dlp — CTA (90–120 s)
-    trailer = download_trailer_via_yt_dlp(
-        trailer_search_url = movie_data.get("trailer_url", ""),
-        movie_title        = movie_data["title"],
-        year               = movie_data["year"],
-    )
+    # 5. Trailer clip — CTA (90–120 s)
+    trailer = download_trailer_via_yt_dlp(movie_data["title"], movie_data["year"])
     if trailer:
         assets.append({"type": "video", "path": trailer, "start_sec": 90, "end_sec": 120})
     else:
-        # Fallback: loop title card for CTA segment
-        assets.append({"type": "image", "path": title_card, "start_sec": 90, "end_sec": 120})
+        assets.append({"type": "image", "path": tc, "start_sec": 90, "end_sec": 120})
 
     manifest = {
         "movie_title":        movie_data["title"],
@@ -203,17 +178,18 @@ def build_visual_manifest(movie_data: dict) -> dict:
         "assets":             assets,
     }
 
-    manifest_path = "assets/visual_manifest.json"
-    with open(manifest_path, "w") as f:
+    os.makedirs(os.path.dirname(MANIFEST_PATH), exist_ok=True)
+    with open(MANIFEST_PATH, "w") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"[Step 4] Visual manifest ({len(assets)} assets) -> {manifest_path}")
+    print(f"[Step 4] Visual manifest ({len(assets)} assets) -> {MANIFEST_PATH}")
     return manifest
 
 
 if __name__ == "__main__":
+    from config.settings import validate_secrets
+    validate_secrets()
     with open("assets/movie_data.json") as f:
         movie_data = json.load(f)
-
     manifest = build_visual_manifest(movie_data)
     print(json.dumps(manifest, indent=2))
