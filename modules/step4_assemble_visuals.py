@@ -1,8 +1,7 @@
 """
 Step 4 — Assemble Visuals
-Scrapes 30-40 high-quality movie stills/scenes from the web.
-Downloads OMDb poster. Attempts trailer via yt-dlp.
-No generated cards — only real movie images.
+Downloads 30-40 movie stills from multiple sources (Bing, DuckDuckGo, OMDb).
+Falls back gracefully between sources.
 """
 
 import os
@@ -38,14 +37,13 @@ def download_image(url: str, dest: str, timeout: int = 15) -> str | None:
         if "image" not in ct and "octet" not in ct:
             return None
         data = r.content
-        if len(data) < 8000:  # skip tiny/icon images
+        if len(data) < 5000:
             return None
         with open(dest, "wb") as f:
             f.write(data)
-        # Verify valid image and minimum size
         img = Image.open(dest)
-        img.load()  # force full decode
-        if img.width < 400 or img.height < 300:
+        img.load()
+        if img.width < 300 or img.height < 200:
             os.remove(dest)
             return None
         return dest
@@ -56,7 +54,6 @@ def download_image(url: str, dest: str, timeout: int = 15) -> str | None:
 
 
 def resize_image(path: str) -> str:
-    """Crop-to-fill resize to 1080p video resolution."""
     try:
         img = Image.open(path).convert("RGB")
         ir = img.width / img.height
@@ -75,24 +72,142 @@ def resize_image(path: str) -> str:
         return path
 
 
-# ── Web Image Scraping ───────────────────────────────────────────────────────
+# ── Image Search Methods (multiple fallbacks) ───────────────────────────────
+
+def _bing_image_search(query: str, num: int = 15) -> list[str]:
+    """Scrape image URLs from Bing Images — much less restrictive than Google."""
+    url = f"https://www.bing.com/images/search?q={quote_plus(query)}&form=HDRSC3&first=1"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        text = resp.text
+        img_urls = []
+        # Bing stores original image URLs in murl attribute
+        matches = re.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', text)
+        for m in matches:
+            if any(skip in m.lower() for skip in ["bing.", "microsoft.", "favicon", "icon", "logo", "badge", "pixel"]):
+                continue
+            if m not in img_urls:
+                img_urls.append(m)
+            if len(img_urls) >= num:
+                break
+        return img_urls[:num]
+    except Exception as e:
+        print(f"[Step 4] Bing search failed for '{query}': {e}")
+        return []
+
+
+def _duckduckgo_image_search(query: str, num: int = 15) -> list[str]:
+    """Scrape image URLs from DuckDuckGo — another fallback."""
+    # DDG uses a token-based API
+    token_url = "https://duckduckgo.com/"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    }
+    try:
+        # Get vqd token
+        resp = requests.get(token_url, params={"q": query}, headers=headers, timeout=10)
+        vqd_match = re.search(r'vqd=(["\'])([^"\']+)\1', resp.text)
+        if not vqd_match:
+            vqd_match = re.search(r'vqd=([\d-]+)', resp.text)
+        if not vqd_match:
+            return []
+        vqd = vqd_match.group(2) if vqd_match.lastindex == 2 else vqd_match.group(1)
+
+        api_url = "https://duckduckgo.com/i.js"
+        params = {"l": "us-en", "o": "json", "q": query, "vqd": vqd, "f": ",,,,,", "p": "1"}
+        resp2 = requests.get(api_url, params=params, headers=headers, timeout=10)
+        data = resp2.json()
+
+        img_urls = []
+        for result in data.get("results", []):
+            img_url = result.get("image", "")
+            if img_url and img_url.startswith("http"):
+                img_urls.append(img_url)
+            if len(img_urls) >= num:
+                break
+        return img_urls[:num]
+    except Exception as e:
+        print(f"[Step 4] DuckDuckGo search failed for '{query}': {e}")
+        return []
+
+
+def _google_image_search(query: str, num: int = 10) -> list[str]:
+    """Google Images fallback."""
+    url = f"https://www.google.com/search?q={quote_plus(query)}&tbm=isch&safe=active"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        text = resp.text
+        img_urls = []
+        matches = re.findall(r'"(https?://[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)"', text, re.IGNORECASE)
+        for m in matches:
+            if any(skip in m.lower() for skip in ["google", "gstatic", "encrypted-tbn", "favicon", "icon", "logo"]):
+                continue
+            if m not in img_urls:
+                img_urls.append(m)
+            if len(img_urls) >= num:
+                break
+        return img_urls[:num]
+    except Exception:
+        return []
+
+
+def search_images(query: str, num: int = 15) -> list[str]:
+    """Try multiple search engines, return combined unique URLs."""
+    all_urls = []
+    seen = set()
+
+    # Try Bing first (most reliable)
+    print(f"[Step 4] Searching Bing: {query}")
+    for url in _bing_image_search(query, num):
+        if url not in seen:
+            seen.add(url)
+            all_urls.append(url)
+
+    # If Bing didn't return enough, try DuckDuckGo
+    if len(all_urls) < num:
+        print(f"[Step 4] Searching DuckDuckGo: {query}")
+        for url in _duckduckgo_image_search(query, num):
+            if url not in seen:
+                seen.add(url)
+                all_urls.append(url)
+
+    # Last resort: Google
+    if len(all_urls) < num // 2:
+        print(f"[Step 4] Searching Google: {query}")
+        for url in _google_image_search(query, num):
+            if url not in seen:
+                seen.add(url)
+                all_urls.append(url)
+
+    return all_urls
+
+
+# ── Main Scraper ─────────────────────────────────────────────────────────────
 
 def scrape_movie_images(movie_title: str, year: str, count: int = TARGET_IMAGES) -> list[str]:
-    """
-    Download movie stills/scenes using multiple search queries.
-    Returns list of downloaded file paths.
-    """
     queries = [
         f"{movie_title} {year} movie stills HD",
         f"{movie_title} {year} movie scenes",
-        f"{movie_title} {year} movie screenshots 1080p",
-        f"{movie_title} {year} cinematography shots",
-        f"{movie_title} {year} film scenes",
-        f"{movie_title} {year} movie wallpaper HD",
-        f"{movie_title} {year} movie poster HD",
-        f"{movie_title} {year} behind the scenes",
-        f"{movie_title} movie iconic scenes",
-        f"{movie_title} {year} movie frames",
+        f"{movie_title} {year} movie screenshots",
+        f"{movie_title} {year} cinematography",
+        f"{movie_title} movie wallpaper HD",
+        f"{movie_title} {year} film poster",
+        f"{movie_title} movie behind the scenes",
     ]
 
     downloaded = []
@@ -102,7 +217,7 @@ def scrape_movie_images(movie_title: str, year: str, count: int = TARGET_IMAGES)
     for query in queries:
         if len(downloaded) >= count:
             break
-        urls = _google_image_search(query, num=10)
+        urls = search_images(query, num=12)
         for url in urls:
             if len(downloaded) >= count:
                 break
@@ -121,38 +236,10 @@ def scrape_movie_images(movie_title: str, year: str, count: int = TARGET_IMAGES)
                 except Exception:
                     if os.path.exists(dest):
                         os.remove(dest)
-        time.sleep(0.3)
+        time.sleep(0.5)
 
     print(f"[Step 4] Total scraped: {len(downloaded)} movie images")
     return downloaded
-
-
-def _google_image_search(query: str, num: int = 10) -> list[str]:
-    """Scrape image URLs from Google Images."""
-    url = f"https://www.google.com/search?q={quote_plus(query)}&tbm=isch&safe=active"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-    try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
-        text = resp.text
-        img_urls = []
-        matches = re.findall(r'"(https?://[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)"', text, re.IGNORECASE)
-        for m in matches:
-            if any(skip in m.lower() for skip in ["google", "gstatic", "encrypted-tbn", "favicon", "icon", "logo", "badge"]):
-                continue
-            if m not in img_urls:
-                img_urls.append(m)
-            if len(img_urls) >= num:
-                break
-        return img_urls[:num]
-    except Exception as e:
-        print(f"[Step 4] Image search failed for '{query}': {e}")
-        return []
 
 
 def _get_ext(url: str) -> str:
@@ -189,10 +276,6 @@ def download_trailer_via_yt_dlp(movie_title: str, year: str, dest: str = None) -
 # ── Manifest builder ────────────────────────────────────────────────────────
 
 def build_visual_manifest(movie_data: dict) -> dict:
-    """
-    Scrape all visuals and return a timestamped manifest.
-    Only real movie images — no generated cards.
-    """
     os.makedirs(IMG_DIR, exist_ok=True)
     os.makedirs(CLIP_DIR, exist_ok=True)
 
@@ -203,31 +286,30 @@ def build_visual_manifest(movie_data: dict) -> dict:
 
     all_images = []
 
-    # 1. OMDb poster (first image)
+    # 1. OMDb poster first
     if movie_data.get("poster_url"):
         pp = download_image(movie_data["poster_url"], os.path.join(IMG_DIR, "poster.jpg"))
         if pp:
             resize_image(pp)
             all_images.append(pp)
 
-    # 2. Scrape 30-35 movie images from web
+    # 2. Scrape from web
     scraped = scrape_movie_images(movie_data["title"], movie_data["year"], count=TARGET_IMAGES)
     all_images.extend(scraped)
 
     if not all_images:
-        raise RuntimeError("No images found. Check internet connection.")
+        raise RuntimeError("No images found. Check internet connection or try a different movie.")
 
-    # Distribute images evenly across video duration
+    # Distribute evenly
     total = len(all_images)
     dur_each = VIDEO_DURATION / total
-
     assets = []
     for i, img_path in enumerate(all_images):
         start = round(i * dur_each, 2)
         end   = round((i + 1) * dur_each, 2)
         assets.append({"type": "image", "path": img_path, "start_sec": start, "end_sec": end})
 
-    # Try trailer — replace last 30s if successful
+    # Try trailer
     trailer = download_trailer_via_yt_dlp(movie_data["title"], movie_data["year"])
     if trailer:
         assets = [a for a in assets if a["end_sec"] <= 90]
