@@ -7,7 +7,7 @@ HOW IT WORKS:
   - Secrets never appear in source code; only in the .env file.
 
 USAGE in any module:
-  from config.settings import OMDB_API_KEY, GROQ_API_KEY
+  from config.settings import TMDB_BEARER, GROQ_API_KEY
 """
 
 import os
@@ -19,10 +19,19 @@ _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=_ENV_PATH)
 
 # ── Secrets (sourced exclusively from .env) ───────────────────────────────────
-OMDB_API_KEY = os.getenv("OMDB_API_KEY", "")
+TMDB_BEARER  = os.getenv("TMDB_BEARER", "")    # Long "API Read Access Token" (eyJ...)
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")   # Short v3 key — fallback
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-# ── OMDb ──────────────────────────────────────────────────────────────────────
+# Legacy OMDb key (kept for backward compatibility, not required)
+OMDB_API_KEY = os.getenv("OMDB_API_KEY", "")
+
+# ── TMDb endpoints ───────────────────────────────────────────────────────────
+TMDB_BASE       = "https://api.themoviedb.org/3"
+TMDB_IMG_BASE   = "https://image.tmdb.org/t/p"
+TMDB_IMG_SIZE   = "original"   # 'original' = full resolution; alt: w1280, w780
+
+# Legacy OMDb base (not required, kept for reference)
 OMDB_BASE = "https://www.omdbapi.com/"
 
 # ── Groq LLM ─────────────────────────────────────────────────────────────────
@@ -39,7 +48,7 @@ VIDEO_DURATION = 120   # seconds
 # ── Audio ─────────────────────────────────────────────────────────────────────
 AUDIO_BITRATE    = "128k"
 AUDIO_SAMPLE_RATE = 44100
-BG_MUSIC_VOLUME  = 0.12   # 12% — keeps narration clear
+BG_MUSIC_VOLUME  = 0.12
 TTS_LANGUAGE     = "en"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -76,16 +85,17 @@ ZOOM_SPEED = 0.0003
 def validate_secrets():
     """
     Call once at startup. Raises clearly if any required key is missing.
-    This is the only place the key names are mentioned in code.
     """
     missing = []
-    if not OMDB_API_KEY:
-        missing.append("OMDB_API_KEY")
+    if not TMDB_BEARER and not TMDB_API_KEY:
+        missing.append("TMDB_BEARER (or TMDB_API_KEY)")
     if not GROQ_API_KEY:
         missing.append("GROQ_API_KEY")
     if missing:
         raise EnvironmentError(
             f"\n\nMissing required keys in your .env file: {', '.join(missing)}\n"
-            f"  -> Copy .env.example to .env and fill in the values.\n"
             f"  -> .env location expected at: {_ENV_PATH}\n"
+            f"  -> Add these lines to your .env:\n"
+            f"     TMDB_BEARER=eyJ...your_token...\n"
+            f"     GROQ_API_KEY=gsk_...\n"
         )

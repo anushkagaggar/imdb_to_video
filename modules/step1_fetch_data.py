@@ -1,79 +1,132 @@
 """
-Step 1 — Fetch Movie Data from OMDb API
-Endpoint: https://www.omdbapi.com/?i=<imdb_id>&apikey=<key>&plot=full
-Returns title, year, plot, cast, director, genres, rating, and a direct poster URL.
+Step 1 — Fetch Movie Data from TMDb API
+Uses TMDb v3 with Bearer token auth.
+Endpoints:
+  /find/{imdb_id}?external_source=imdb_id  -> map IMDb ID to TMDb ID
+  /movie/{tmdb_id}                          -> full metadata
+  /movie/{tmdb_id}/credits                  -> cast & crew
+Returns the same dict shape as the previous OMDb version, so downstream
+pipeline steps don't need to change.
 """
 
+import os
 import json
 import requests
-from config.settings import OMDB_API_KEY, OMDB_BASE
-import os
+from config.settings import TMDB_BEARER, TMDB_API_KEY, TMDB_BASE, TMDB_IMG_BASE
+
+
+def _auth_headers():
+    """TMDb Bearer auth if available, else fall back to v3 query param."""
+    if TMDB_BEARER:
+        return {"Authorization": f"Bearer {TMDB_BEARER}", "accept": "application/json"}
+    return {"accept": "application/json"}
+
+
+def _auth_params():
+    """Fallback v3 API key param when no Bearer token is set."""
+    return {"api_key": TMDB_API_KEY} if TMDB_API_KEY and not TMDB_BEARER else {}
+
+
+def _get(path, params=None, timeout=20):
+    params = dict(params or {})
+    params.update(_auth_params())
+    url = f"{TMDB_BASE}{path}"
+    resp = requests.get(url, headers=_auth_headers(), params=params, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def fetch_movie_data(imdb_id: str) -> dict:
     """
-    Fetch full movie metadata from OMDb in a single API call.
-    Returns a clean dict consumed by all downstream pipeline steps.
+    Fetch full movie metadata from TMDb using the IMDb ID.
+    Returns a dict in the same shape used by the rest of the pipeline.
     """
-    resp = requests.get(OMDB_BASE, params={
-        "i":      imdb_id,
-        "apikey": OMDB_API_KEY,
-        "plot":   "full",
-    }, timeout=10)
-    resp.raise_for_status()
+    # 1. Find TMDb ID from IMDb ID
+    find_data = _get(f"/find/{imdb_id}", {"external_source": "imdb_id"})
+    movie_results = find_data.get("movie_results", [])
+    if not movie_results:
+        raise ValueError(f"No TMDb match found for IMDb ID '{imdb_id}'")
+    tmdb_id = movie_results[0]["id"]
 
-    data = resp.json()
+    # 2. Full movie details + credits + videos in one append_to_response call
+    movie = _get(f"/movie/{tmdb_id}", {
+        "append_to_response": "credits,videos",
+        "language": "en-US",
+    })
 
-    if data.get("Response") == "False":
-        raise ValueError(f"OMDb error for '{imdb_id}': {data.get('Error')}")
+    # ── Map TMDb response to our internal shape ──────────────────────────────
+    title    = movie.get("title", "")
+    year     = (movie.get("release_date") or "")[:4]
+    overview = movie.get("overview", "")
+    tagline  = movie.get("tagline", "") or ""
+    runtime  = str(movie.get("runtime", 0))
+    rating   = round(movie.get("vote_average", 0.0), 1)
 
-    # Cast — OMDb returns a comma-separated string
-    cast = [a.strip() for a in data.get("Actors", "").split(",") if a.strip()]
+    genres = [g["name"] for g in movie.get("genres", [])]
 
-    # Genres — same format
-    genres = [g.strip() for g in data.get("Genre", "").split(",") if g.strip()]
+    # Cast — top 5 by 'order'
+    credits = movie.get("credits", {})
+    cast_list = sorted(credits.get("cast", []), key=lambda c: c.get("order", 999))
+    cast = [c["name"] for c in cast_list[:5]]
 
-    # Rating
-    try:
-        rating = float(data.get("imdbRating", "0"))
-    except ValueError:
-        rating = 0.0
+    # Director
+    director = "Unknown"
+    for crew in credits.get("crew", []):
+        if crew.get("job") == "Director":
+            director = crew["name"]
+            break
 
-    # Poster URL — direct image link from OMDb
-    poster_url = data.get("Poster")
-    if poster_url == "N/A":
-        poster_url = None
+    # Language / Country
+    spoken_languages = movie.get("spoken_languages", [])
+    language = ", ".join(l.get("english_name", "") for l in spoken_languages)
+    countries = movie.get("production_countries", [])
+    country = ", ".join(c.get("name", "") for c in countries)
 
-    title = data.get("Title", "")
-    year  = data.get("Year", "")[:4]
+    # Poster + backdrop (full-resolution URLs)
+    poster_path   = movie.get("poster_path")
+    backdrop_path = movie.get("backdrop_path")
+    poster_url    = f"{TMDB_IMG_BASE}/original{poster_path}"   if poster_path   else None
+    backdrop_url  = f"{TMDB_IMG_BASE}/original{backdrop_path}" if backdrop_path else None
 
-    # YouTube trailer search URL (no API key needed — yt-dlp handles download)
-    trailer_url = (
-        "https://www.youtube.com/results?search_query="
-        + title.replace(" ", "+") + "+" + year + "+official+trailer"
-    )
+    # Trailer (first YouTube video tagged Trailer)
+    trailer_url = None
+    videos = (movie.get("videos") or {}).get("results", [])
+    for v in videos:
+        if v.get("site") == "YouTube" and v.get("type") == "Trailer":
+            trailer_url = f"https://www.youtube.com/watch?v={v['key']}"
+            break
+    if not trailer_url:
+        trailer_url = (
+            "https://www.youtube.com/results?search_query="
+            + title.replace(" ", "+") + "+" + year + "+official+trailer"
+        )
+
+    # Box office (TMDb has revenue, not box-office category strings)
+    revenue = movie.get("revenue", 0)
+    box_office = f"${revenue:,}" if revenue else "N/A"
 
     movie_data = {
         "imdb_id":      imdb_id,
+        "tmdb_id":      tmdb_id,
         "title":        title,
         "year":         year,
-        "tagline":      "",
-        "overview":     data.get("Plot", ""),
+        "tagline":      tagline,
+        "overview":     overview,
         "genres":       genres,
-        "runtime_min":  data.get("Runtime", "0 min").replace(" min", ""),
+        "runtime_min":  runtime,
         "rating":       rating,
-        "director":     data.get("Director", "Unknown"),
-        "cast":         cast[:5],
-        "language":     data.get("Language", ""),
-        "country":      data.get("Country", ""),
-        "awards":       data.get("Awards", ""),
-        "box_office":   data.get("BoxOffice", "N/A"),
+        "director":     director,
+        "cast":         cast,
+        "language":     language,
+        "country":      country,
+        "awards":       "",            # TMDb doesn't expose awards
+        "box_office":   box_office,
         "poster_url":   poster_url,
-        "backdrop_url": None,
+        "backdrop_url": backdrop_url,
         "trailer_url":  trailer_url,
     }
 
-    print(f"[Step 1] Fetched: {movie_data['title']} ({movie_data['year']}) — {movie_data['rating']}/10")
+    print(f"[Step 1] Fetched: {title} ({year}) — {rating}/10 (TMDb #{tmdb_id})")
     return movie_data
 
 
@@ -87,6 +140,6 @@ def save_movie_data(movie_data: dict, path: str = "assets/movie_data.json"):
 if __name__ == "__main__":
     from config.settings import validate_secrets
     validate_secrets()
-    data = fetch_movie_data("tt0111161")
+    data = fetch_movie_data("tt1187043")
     save_movie_data(data)
     print(json.dumps(data, indent=2))

@@ -1,33 +1,29 @@
 """
-main.py — IMDb-to-Video Pipeline Orchestrator
-Run: python main.py --imdb tt0111161
+main.py — IMDb-to-Video Pipeline Orchestrator (TMDb-powered)
+Run: python main.py --imdb tt1187043
 """
 import imageio_ffmpeg, os
 os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
 
 import sys
 import time
-import json
-import shutil
 import argparse
-import requests
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config.settings import validate_secrets
+from config.settings import validate_secrets, OUTPUT_DIR
 from modules.step1_fetch_data       import fetch_movie_data, save_movie_data
 from modules.step2_generate_script  import generate_script, save_script
 from modules.step3_text_to_speech   import text_to_speech, adjust_duration
 from modules.step4_assemble_visuals import build_visual_manifest
 from modules.step5_render_video     import render_video
-from config.settings                import OUTPUT_DIR
 
 
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║         IMDb -> 2-Minute Video Pipeline             ║
-║     OMDb  •  Groq LLM  •  gTTS  •  FFmpeg          ║
+║     TMDb  •  Groq LLM  •  gTTS  •  FFmpeg          ║
 ╚══════════════════════════════════════════════════════╝
 """
 
@@ -40,63 +36,16 @@ def check_dependencies():
     print(f"[Init] FFmpeg: {ffmpeg_path}")
 
 
-def fetch_imdb_gallery_html(imdb_id):
-    """
-    Fetch IMDb gallery HTML. Try direct first, if it fails (geo-blocked),
-    suggest using Apify or read from cache.
-    """
-    cache_path = "assets/imdb_gallery.html"
-
-    # Try direct request first
-    gallery_url = f"https://www.imdb.com/title/{imdb_id}/mediaindex"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
-    print(f"[Init] Fetching IMDb gallery for {imdb_id}...")
-
-    try:
-        resp = requests.get(gallery_url, headers=headers, timeout=20)
-        resp.raise_for_status()
-
-        # Check if we got actual image content (not a captcha/block page)
-        if "m.media-amazon.com/images/M/MV5B" in resp.text:
-            os.makedirs("assets", exist_ok=True)
-            with open(cache_path, "w", encoding="utf-8") as f:
-                f.write(resp.text)
-            print(f"[Init] IMDb gallery HTML cached -> {cache_path}")
-            return resp.text
-        else:
-            print("[Init] IMDb returned blocked/captcha page (geo-restriction)")
-    except Exception as e:
-        print(f"[Init] Direct IMDb fetch failed: {e}")
-
-    # Check if cached file exists from a previous Apify run
-    if os.path.exists(cache_path):
-        print(f"[Init] Using cached gallery HTML from {cache_path}")
-        with open(cache_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
-
-    print("[Init] No cached IMDb gallery HTML found.")
-    print("[Init] To get IMDb images, save the Apify output to assets/imdb_gallery.html")
-    return None
-
-
 def run_pipeline(imdb_id: str):
     print(BANNER)
     check_dependencies()
     validate_secrets()
 
     total_start = time.time()
-    title_slug  = imdb_id
-
-    # ── Pre-fetch IMDb gallery HTML ───────────────────────────────────────────
-    imdb_html = fetch_imdb_gallery_html(imdb_id)
 
     # ── Step 1 ────────────────────────────────────────────────────────────────
     print("\n" + "─" * 54)
-    print("  STEP 1 / 5  —  Fetch Movie Data from OMDb")
+    print("  STEP 1 / 5  —  Fetch Movie Data from TMDb")
     print("─" * 54)
     t          = time.time()
     movie_data = fetch_movie_data(imdb_id)
@@ -124,10 +73,10 @@ def run_pipeline(imdb_id: str):
 
     # ── Step 4 ────────────────────────────────────────────────────────────────
     print("─" * 54)
-    print("  STEP 4 / 5  —  Assemble Visuals (IMDb Gallery)")
+    print("  STEP 4 / 5  —  Assemble Visuals (TMDb Images)")
     print("─" * 54)
     t        = time.time()
-    manifest = build_visual_manifest(movie_data, apify_html=imdb_html)
+    manifest = build_visual_manifest(movie_data)
     print(f"  Done in {time.time() - t:.1f}s\n")
 
     # ── Step 5 ────────────────────────────────────────────────────────────────
@@ -136,11 +85,7 @@ def run_pipeline(imdb_id: str):
     print("─" * 54)
     t           = time.time()
     output_path = f"{OUTPUT_DIR}/{title_slug}_2min.mp4"
-    render_video(
-        manifest       = manifest,
-        narration_path = final_audio,
-        output_path    = output_path,
-    )
+    render_video(manifest=manifest, narration_path=final_audio, output_path=output_path)
     print(f"  Done in {time.time() - t:.1f}s\n")
 
     # ── Summary ───────────────────────────────────────────────────────────────
@@ -151,19 +96,13 @@ def run_pipeline(imdb_id: str):
     print(f"  PIPELINE COMPLETE in {elapsed:.0f}s")
     print(f"  Movie  : {movie_data['title']} ({movie_data['year']})")
     print(f"  Output : {output_path}")
-    print(f"  Size   : {size_mb:.1f} MB  |  Duration: ~2 min")
+    print(f"  Size   : {size_mb:.1f} MB  |  Resolution: 1920x1080  |  Duration: ~2 min")
     print("=" * 54)
-
     return output_path
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Generate a 2-minute video from an IMDb ID."
-    )
-    parser.add_argument(
-        "--imdb", required=True,
-        help="IMDb ID, e.g. tt0111161 (The Shawshank Redemption)",
-    )
+    parser = argparse.ArgumentParser(description="Generate a 2-minute video from an IMDb ID.")
+    parser.add_argument("--imdb", required=True, help="IMDb ID, e.g. tt1187043")
     args = parser.parse_args()
     run_pipeline(imdb_id=args.imdb)
