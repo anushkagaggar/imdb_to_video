@@ -2,17 +2,17 @@
 
 ## [HOOK] (0s – 10s)
 
-Get ready to meet India's most unconventional college student, Rancho - a rascal, a joker, a dreamer, and a genius all rolled into one. His arrival at the prestigious Indian Institute of Engineering sets the stage for an unforgettable journey.
+Get ready to enter a world of laughter and tears, as we follow the unforgettable journey of Rancho, a college student like no other.
 
 ## [CONTEXT] (10s – 30s)
 
-Welcome to the Indian Institute of Engineering, one of the country's most prestigious universities. Here, the brightest minds in India come together to chase their dreams. But amidst the chaos and competition, a new student will shake things up - Rancho, a young man with a heart of gold and a mind full of mischief. He quickly befriends two other students, Farhan and Raju, and together they make life a little more interesting for the school's uptight dean, Virus.
+Set in the heart of India, at the prestigious Indian Institute of Engineering, we meet Rancho, a free-spirited and eccentric student who defies convention with his outlandish schemes and unorthodox teaching methods. Alongside his two best friends, Farhan and Raju, they make life a rollercoaster of fun and adventure, leaving a trail of unforgettable memories in their wake. But amidst the laughter and camaraderie, a stern and uptight dean, Virus, is determined to put an end to their antics.
 
 ## [PLOT_TEASE] (30s – 90s)
 
-As Rancho navigates the ups and downs of college life, he charms his way into the hearts of his professors and peers alike. But not everyone is a fan of the charismatic young man. Virus, the dean, sees Rancho as a threat to his authority and sets out to prove that the young man is not as clever as he seems. Meanwhile, Rancho's friendship with Farhan and Raju deepens, and the three of them get into all sorts of trouble as they try to make the most of their time at college. But what secrets is Rancho hiding, and what will happen when Virus finally catches up with him?
+As Rancho's influence spreads, he becomes a thorn in the side of Dean Virus, who will stop at nothing to prove his superiority. But little does he know, Rancho's unorthodox methods and infectious enthusiasm have caught the eye of the dean's beautiful daughter, Pia. As the battle between Rancho and Virus intensifies, a series of hilarious and poignant events unfolds, leaving the students and faculty of the institute questioning the true meaning of success and friendship. Will Rancho's unconventional approach triumph over the traditional ways of the institute, or will he be forced to conform? Join us on this heartwarming and sidesplitting journey as we follow the story of three unlikely friends who dared to be different.
 
 ## [CTA] (90s – 120s)
 
-Experience the unforgettable journey of Rancho and his friends in the hit Bollywood movie, 3 Idiots. Streaming now on major platforms, including Amazon Prime Video and YouTube Movies.
+'3 Idiots' is a cinematic masterpiece that will leave you smiling, laughing, and maybe even shedding a tear or two. Catch it streaming now on major platforms, and get ready to experience the unforgettable world of Rancho and his friends.
 
