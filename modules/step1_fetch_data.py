@@ -1,6 +1,7 @@
 """
-Step 1 — Fetch Movie Data from TMDb API (free)
-Accepts an IMDb ID (e.g. tt0111161) and returns structured movie metadata.
+Step 1 — Fetch Movie Data from OMDb API (free, works in India)
+Endpoint: https://www.omdbapi.com/?i=<imdb_id>&apikey=<key>&plot=full
+One call returns everything: title, year, plot, cast, director, genre, rating, poster URL.
 """
 
 import os
@@ -10,81 +11,79 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-TMDB_BASE    = "https://api.themoviedb.org/3"
-TMDB_IMG     = "https://image.tmdb.org/t/p/w780"
+OMDB_API_KEY = os.getenv("OMDB_API_KEY")
+OMDB_BASE    = "https://www.omdbapi.com/"
 
 
 def fetch_movie_data(imdb_id: str) -> dict:
     """
-    Given an IMDb ID, fetch full movie metadata from TMDb.
-    Returns a clean dict ready for downstream pipeline steps.
+    Given an IMDb ID, fetch full movie metadata from OMDb in a single API call.
+    Returns a clean dict ready for all downstream pipeline steps.
     """
-    if not TMDB_API_KEY:
-        raise ValueError("TMDB_API_KEY not set in .env")
+    if not OMDB_API_KEY:
+        raise ValueError("OMDB_API_KEY not set in .env")
 
-    # ── 1. Resolve IMDb ID → TMDb movie object ──────────────────────────────
-    find_url = f"{TMDB_BASE}/find/{imdb_id}"
-    resp = requests.get(find_url, params={
-        "api_key":           TMDB_API_KEY,
-        "external_source":   "imdb_id",
+    # Single request — OMDb returns everything in one shot
+    resp = requests.get(OMDB_BASE, params={
+        "i":      imdb_id,
+        "apikey": OMDB_API_KEY,
+        "plot":   "full",
     }, timeout=10)
     resp.raise_for_status()
 
-    results = resp.json().get("movie_results", [])
-    if not results:
-        raise ValueError(f"No TMDb movie found for IMDb ID: {imdb_id}")
+    data = resp.json()
 
-    tmdb_id = results[0]["id"]
+    if data.get("Response") == "False":
+        raise ValueError(f"OMDb error for '{imdb_id}': {data.get('Error')}")
 
-    # ── 2. Full movie details ────────────────────────────────────────────────
-    detail_url = f"{TMDB_BASE}/movie/{tmdb_id}"
-    detail = requests.get(detail_url, params={
-        "api_key":            TMDB_API_KEY,
-        "append_to_response": "credits,videos",
-    }, timeout=10).json()
+    # Parse cast (comma-separated string -> list)
+    cast_raw = data.get("Actors", "")
+    cast     = [a.strip() for a in cast_raw.split(",") if a.strip()]
 
-    # ── 3. Extract cast & director ───────────────────────────────────────────
-    cast     = detail.get("credits", {}).get("cast", [])
-    crew     = detail.get("credits", {}).get("crew", [])
-    top_cast = [c["name"] for c in cast[:5]]
-    director = next((c["name"] for c in crew if c["job"] == "Director"), "Unknown")
+    # Parse genres
+    genres_raw = data.get("Genre", "")
+    genres     = [g.strip() for g in genres_raw.split(",") if g.strip()]
 
-    # ── 4. Trailer YouTube key ───────────────────────────────────────────────
-    videos    = detail.get("videos", {}).get("results", [])
-    trailer   = next(
-        (v for v in videos if v["type"] == "Trailer" and v["site"] == "YouTube"),
-        None,
+    # IMDb rating
+    try:
+        rating = float(data.get("imdbRating", "0"))
+    except ValueError:
+        rating = 0.0
+
+    # Poster — OMDb returns a direct image URL in the free tier
+    poster_url = data.get("Poster")
+    if poster_url == "N/A":
+        poster_url = None
+
+    # Build YouTube trailer search URL (no extra API needed)
+    title       = data.get("Title", "")
+    year        = data.get("Year", "")[:4]
+    trailer_url = (
+        "https://www.youtube.com/results?search_query="
+        + title.replace(" ", "+") + "+" + year + "+official+trailer"
     )
-    trailer_url = f"https://www.youtube.com/watch?v={trailer['key']}" if trailer else None
 
-    # ── 5. Poster URL ────────────────────────────────────────────────────────
-    poster_path = detail.get("poster_path")
-    poster_url  = f"{TMDB_IMG}{poster_path}" if poster_path else None
-
-    # ── 6. Backdrop / stills ─────────────────────────────────────────────────
-    backdrop_path = detail.get("backdrop_path")
-    backdrop_url  = f"{TMDB_IMG}{backdrop_path}" if backdrop_path else None
-
-    # ── 7. Assemble clean payload ────────────────────────────────────────────
     movie_data = {
-        "imdb_id":       imdb_id,
-        "tmdb_id":       tmdb_id,
-        "title":         detail.get("title", "Unknown Title"),
-        "year":          (detail.get("release_date") or "")[:4],
-        "tagline":       detail.get("tagline", ""),
-        "overview":      detail.get("overview", ""),
-        "genres":        [g["name"] for g in detail.get("genres", [])],
-        "runtime_min":   detail.get("runtime", 0),
-        "rating":        round(detail.get("vote_average", 0), 1),
-        "director":      director,
-        "cast":          top_cast,
-        "poster_url":    poster_url,
-        "backdrop_url":  backdrop_url,
-        "trailer_url":   trailer_url,
+        "imdb_id":      imdb_id,
+        "title":        title,
+        "year":         year,
+        "tagline":      "",
+        "overview":     data.get("Plot", ""),
+        "genres":       genres,
+        "runtime_min":  data.get("Runtime", "0 min").replace(" min", ""),
+        "rating":       rating,
+        "director":     data.get("Director", "Unknown"),
+        "cast":         cast[:5],
+        "language":     data.get("Language", ""),
+        "country":      data.get("Country", ""),
+        "awards":       data.get("Awards", ""),
+        "box_office":   data.get("BoxOffice", "N/A"),
+        "poster_url":   poster_url,
+        "backdrop_url": None,
+        "trailer_url":  trailer_url,
     }
 
-    print(f"[Step 1] ✅ Fetched: {movie_data['title']} ({movie_data['year']})")
+    print(f"[Step 1] Fetched: {movie_data['title']} ({movie_data['year']}) - {movie_data['rating']}/10")
     return movie_data
 
 
@@ -92,11 +91,10 @@ def save_movie_data(movie_data: dict, path: str = "assets/movie_data.json"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(movie_data, f, indent=2)
-    print(f"[Step 1] 💾 Saved to {path}")
+    print(f"[Step 1] Saved to {path}")
 
 
 if __name__ == "__main__":
-    # Quick test — The Shawshank Redemption
     data = fetch_movie_data("tt0111161")
     save_movie_data(data)
     print(json.dumps(data, indent=2))

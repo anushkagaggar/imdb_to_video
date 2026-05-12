@@ -9,12 +9,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── API Keys ──────────────────────────────────────────────────────────────────
-TMDB_API_KEY  = os.getenv("TMDB_API_KEY", "")
+OMDB_API_KEY  = os.getenv("OMDB_API_KEY", "")
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 
-# ── TMDb ──────────────────────────────────────────────────────────────────────
-TMDB_BASE     = "https://api.themoviedb.org/3"
-TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w1280"
+# ── OMDb ──────────────────────────────────────────────────────────────────────
+OMDB_BASE     = "https://www.omdbapi.com/"
 
 # ── Groq LLM ─────────────────────────────────────────────────────────────────
 GROQ_MODEL        = "llama3-8b-8192"

@@ -26,7 +26,7 @@ from modules.step5_render_video     import render_video
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║         🎬  IMDb → 2-Minute Video Pipeline          ║
-║     TMDb  •  Groq LLM  •  gTTS  •  FFmpeg          ║
+║     OMDb  •  Groq LLM  •  gTTS  •  FFmpeg          ║
 ╚══════════════════════════════════════════════════════╝
 """
 
@@ -34,8 +34,8 @@ BANNER = """
 def validate_env():
     """Check required API keys before starting."""
     missing = []
-    if not os.getenv("TMDB_API_KEY"):
-        missing.append("TMDB_API_KEY")
+    if not os.getenv("OMDB_API_KEY"):
+        missing.append("OMDB_API_KEY")
     if not os.getenv("GROQ_API_KEY"):
         missing.append("GROQ_API_KEY")
     if missing:
@@ -56,7 +56,7 @@ def run_pipeline(imdb_id: str, skip_download: bool = False):
     # STEP 1 — Fetch movie metadata
     # ─────────────────────────────────────────────────────────────────────────
     print("\n" + "─" * 54)
-    print("  STEP 1 / 5  —  Fetch Movie Data from TMDb")
+    print("  STEP 1 / 5  —  Fetch Movie Data from OMDb")
     print("─" * 54)
     t = time.time()
 
@@ -96,7 +96,7 @@ def run_pipeline(imdb_id: str, skip_download: bool = False):
     # STEP 4 — Download visuals & build manifest
     # ─────────────────────────────────────────────────────────────────────────
     print("─" * 54)
-    print("  STEP 4 / 5  —  Assemble Visuals (TMDb + yt-dlp)")
+    print("  STEP 4 / 5  —  Assemble Visuals (OMDb poster + yt-dlp)")
     print("─" * 54)
     t = time.time()
 
